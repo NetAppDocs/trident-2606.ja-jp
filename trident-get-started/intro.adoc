@@ -1,0 +1,92 @@
+---
+sidebar: sidebar 
+permalink: trident-get-started/intro.html 
+keywords: product overview, Trident, fsx, element, google cloud, architecture, node pod, controller pod, pods, csi, sidecar 
+summary: Tridentは、NetAppが管理する完全にサポートされたオープンソースプロジェクトです。Container Storage Interface（CSI）などの業界標準のインターフェースを使用して、コンテナ化されたアプリケーションの永続性の要求を満たすように設計されています。 
+---
+= Tridentの詳細
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentは、NetAppが管理する完全にサポートされたオープンソースプロジェクトです。Container Storage Interface（CSI）などの業界標準のインターフェースを使用して、コンテナ化されたアプリケーションの永続性の要求を満たすように設計されています。
+
+
+
+[[what-is-trident]]
+== Tridentとは
+
+NetApp Tridentは、パブリッククラウドまたはオンプレミスにおける、すべての主要なNetAppストレージプラットフォーム全体でのストレージリソースの消費と管理を可能にします。これには、オンプレミスONTAPクラスタ（AFF、FAS、ASA）、ONTAP Select、Cloud Volumes ONTAP、Elementソフトウェア（NetApp HCI、SolidFire）、Azure NetApp Files、Amazon FSx for NetApp ONTAP、Google Cloud NetApp Volumesが含まれます。
+
+Tridentは、Container Storage Interface（CSI）に準拠した動的ストレージオーケストレーターであり、link:https://kubernetes.io/["Kubernetes"^]とネイティブに統合されています。Tridentは、クラスター内の各ワーカーノード上で、単一のControllerポッドとNodeポッドとして実行されます。詳細については、link:../trident-get-started/architecture.html["Tridentアーキテクチャ"]を参照してください。
+
+Tridentは、NetAppストレージプラットフォーム向けのDockerエコシステムとの直接統合も提供しています。NetApp Docker Volume Plugin（nDVP）は、ストレージプラットフォームからDockerホストへのストレージリソースのプロビジョニングと管理をサポートします。詳細については、link:../trident-docker/deploy-docker.html["Docker用Tridentを導入する"]を参照してください。
+
+
+NOTE: Kubernetesを初めて使用する場合は、link:https://kubernetes.io/docs/home/["Kubernetesの概念とツール"^]に慣れておく必要があります。
+
+
+
+[[supported-kubernetes-platforms]]
+== サポートされている Kubernetes プラットフォーム
+
+Tridentは、さまざまなKubernetesディストリビューションおよびプラットフォームでサポートされています。
+
+サポートされているプラットフォームは以下のとおりです： * アップストリーム Kubernetes * Red Hat OpenShift * SUSE Harvester 1.7.0（ONTAP iSCSI）
+
+
+
+[[kubernetes-integration-with-netapp-products]]
+== Kubernetes と NetApp 製品の統合
+
+NetApp のストレージ製品ポートフォリオは、Kubernetes クラスタのさまざまな側面と統合され、高度なデータ管理機能を提供することで、Kubernetes デプロイメントの機能性、能力、パフォーマンス、可用性を強化します。
+
+.Amazon FSx for NetApp ONTAP
+[%collapsible]
+====
+link:https://www.netapp.com/aws/fsx-ontap/["Amazon FSx for NetApp ONTAP"^]は、NetApp ONTAPストレージオペレーティングシステムを搭載したファイルシステムを起動して実行できる、完全に管理されたAWSサービスです。
+
+====
+.Azure NetApp Files
+[%collapsible]
+====
+https://www.netapp.com/azure/azure-netapp-files/["Azure NetApp Files"^]は、NetAppを基盤とするエンタープライズクラスのAzureファイル共有サービスです。NetAppに期待されるパフォーマンスと豊富なデータ管理機能により、最も要求の厳しいファイルベースのワークロードをAzureでネイティブに実行できます。
+
+====
+.Cloud Volumes ONTAP
+[%collapsible]
+====
+link:https://www.netapp.com/cloud-services/cloud-volumes-ontap/["Cloud Volumes ONTAP"^]は、クラウドでONTAP データ管理ソフトウェアを実行するソフトウェア型のストレージ アプライアンスです。
+
+====
+.Google Cloud NetApp Volumes
+[%collapsible]
+====
+link:https://bluexp.netapp.com/google-cloud-netapp-volumes?utm_source=GitHub&utm_campaign=Trident["Google Cloud NetApp Volumes"^]は、Google Cloudのフルマネージドファイルストレージサービスであり、ハイパフォーマンスでエンタープライズクラスのファイルストレージを提供します。
+
+====
+.Element ソフトウェア
+[%collapsible]
+====
+https://www.netapp.com/data-management/element-software/["要素"^]により、ストレージ管理者は、パフォーマンスを保証し、簡素化され合理化されたストレージ フットプリントを実現することで、ワークロードを統合できます。
+
+====
+.NetApp HCI
+[%collapsible]
+====
+link:https://docs.netapp.com/us-en/hci/docs/concept_hci_product_overview.html["NetApp HCI"^]は、日常的なタスクを自動化し、インフラ管理者がより重要な機能に集中できるようにすることで、データセンターの管理と拡張を簡素化します。
+
+Trident は、コンテナ化されたアプリケーション用のストレージデバイスを、基盤となる NetApp HCI ストレージ プラットフォームに対して直接プロビジョニングおよび管理できます。
+
+====
+.NetApp ONTAP
+[%collapsible]
+====
+link:https://docs.netapp.com/us-en/ontap/index.html["NetApp ONTAP"^]はNetAppのマルチプロトコルの統合ストレージ オペレーティング システムで、あらゆるアプリケーションに高度なデータ管理機能を提供します。
+
+ONTAP システムには、オールフラッシュ、ハイブリッド、またはオール HDD 構成があり、さまざまな導入モデルが提供されています（オンプレミス FAS 、 AFF 、 ASA クラスタ、 ONTAP Select 、 Cloud Volumes ONTAP ）。Trident は、これらの ONTAP 導入モデルをサポートしています。
+
+====

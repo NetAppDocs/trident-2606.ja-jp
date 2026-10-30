@@ -1,0 +1,121 @@
+---
+sidebar: sidebar 
+permalink: trident-use/create-stor-class.html 
+keywords: storage class, manage storage class, storage classes, kubernetes storage classes 
+summary: Kubernetes StorageClass ファイルを設計し、StorageClass を作成して、Trident にボリュームのプロビジョニング方法を指示できます。 
+---
+= Tridentストレージクラスの作成
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+KubernetesのStorageClassオブジェクトを設定し、ストレージクラスを作成してTridentにボリュームのプロビジョニング方法を指示します。
+
+
+
+[[configure-a-kubernetes-storageclass-object]]
+== Kubernetes StorageClassオブジェクトを設定する
+
+ https://kubernetes.io/docs/concepts/storage/storage-classes/["Kubernetes StorageClass オブジェクト"^]は、そのクラスで使用されるプロビジョナーとしてTridentを識別し、Tridentにボリュームのプロビジョニング方法を指示します。次に例を示します。
+
+[source, yaml]
+----
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ontap-gold
+provisioner: csi.trident.netapp.io
+mountOptions:
+  - nfsvers=3
+  - nolock
+parameters:
+  backendType: "ontap-nas"
+  media: "ssd"
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+----
+link:../trident-reference/objects.html["KubernetesとTridentオブジェクト"]を参照して、ストレージクラスが `PersistentVolumeClaim`とどのように相互作用するか、および Trident がボリュームをプロビジョニングする方法を制御するパラメータの詳細を確認してください。
+
+
+
+[[create-a-storage-class]]
+== ストレージクラスを作成する
+
+StorageClassオブジェクトを作成したら、ストレージクラスを作成できます。<<ストレージクラスのサンプル>>には、使用または変更できる基本的なサンプルがいくつか用意されています。
+
+.手順
+. これはKubernetesオブジェクトなので、 `kubectl`を使用してKubernetesで作成します。
++
+[listing]
+----
+kubectl create -f sample-input/storage-class-basic-csi.yaml
+----
+. KubernetesとTridentの両方で*basic-csi*ストレージクラスが表示され、Tridentがバックエンドでプールを検出しているはずです。
++
+[source, console]
+----
+kubectl get sc basic-csi
+----
+
+
+[listing]
+----
+NAME         PROVISIONER             AGE
+basic-csi    csi.trident.netapp.io   15h
+----
+[source, console]
+----
+./tridentctl -n trident get storageclass basic-csi -o json
+----
+[source, json]
+----
+{
+  "items": [
+    {
+      "Config": {
+        "version": "1",
+        "name": "basic-csi",
+        "attributes": {
+          "backendType": "ontap-nas"
+        },
+        "storagePools": null,
+        "additionalStoragePools": null
+      },
+      "storage": {
+        "ontapnas_10.0.0.1": [
+          "aggr1",
+          "aggr2",
+          "aggr3",
+          "aggr4"
+        ]
+      }
+    }
+  ]
+}
+----
+
+
+[[storage-class-samples]]
+=== ストレージクラスのサンプル
+
+Tridentは https://github.com/NetApp/trident/tree/master/trident-installer/sample-input/storage-class-samples["特定のバックエンド向けのシンプルなストレージクラス定義"^]を提供します。
+
+あるいは、インストーラーに付属の `sample-input/storage-class-csi.yaml.templ`ファイルを編集し、 `__BACKEND_TYPE__`をストレージドライバー名に置き換えることもできます。
+
+[listing]
+----
+./tridentctl -n trident get backend
++-------------+----------------+--------------------------------------+--------+---------+
+|    NAME     | STORAGE DRIVER |                 UUID                 | STATE  | VOLUMES |
++-------------+----------------+--------------------------------------+--------+---------+
+| nas-backend | ontap-nas      | 98e19b74-aec7-4a3d-8dcf-128e5033b214 | online |       0 |
++-------------+----------------+--------------------------------------+--------+---------+
+
+cp sample-input/storage-class-csi.yaml.templ sample-input/storage-class-basic-csi.yaml
+
+# Modify __BACKEND_TYPE__ with the storage driver field above (e.g., ontap-nas)
+vi sample-input/storage-class-basic-csi.yaml
+----

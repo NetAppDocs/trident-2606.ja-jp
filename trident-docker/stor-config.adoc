@@ -1,0 +1,602 @@
+---
+sidebar: sidebar 
+permalink: trident-docker/stor-config.html 
+keywords: deploy, trident, docker, trident for docker, nfs, iscsi, protocol, nfs protocol, iscsi protocol, configure host, host config, storage config, options, variables, ontap, element, storage pool, service type, service level, cloud volumes 
+summary: Trident 構成で使用可能な設定オプションを参照してください。 
+---
+= ストレージ構成オプション
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Trident 構成で使用可能な設定オプションを参照してください。
+
+
+
+[[global-configuration-options]]
+== グローバル設定オプション
+
+これらの設定オプションは、使用されているストレージプラットフォームに関係なく、すべてのTrident構成に適用されます。
+
+[cols="3*"]
+|===
+| オプション | 概要 | 例 
+
+
+| `version`  a| 
+設定ファイルのバージョン番号
+ a| 
+`1`
+
+
+
+| `storageDriverName`  a| 
+ストレージドライバの名前
+ a| 
+`ontap-nas`、 `ontap-san`、 `ontap-nas-economy`、
+`ontap-nas-flexgroup`、 `solidfire-san`
+
+
+
+| `storagePrefix`  a| 
+ボリューム名のオプションのプレフィックス。デフォルト： `netappdvp_`。
+ a| 
+`staging_`
+
+
+
+| `limitVolumeSize`  a| 
+ボリュームサイズに対するオプションの制限。デフォルト：""（強制されません）
+ a| 
+`10g`
+
+|===
+
+TIP:  `storagePrefix`（デフォルトを含む）は Element バックエンドには使用しないでください。デフォルトでは、 `solidfire-san`ドライバはこの設定を無視し、プレフィックスを使用しません。NetApp では、Docker ボリュームマッピングに特定の tenantID を使用するか、名前の変更が使用された可能性がある場合は Docker バージョン、ドライバ情報、および Docker からの元の名前が入力された属性データを使用することを推奨します。
+
+作成するボリュームごとにオプションを指定する必要がないように、デフォルトのオプションが用意されています。 `size`オプションはすべてのコントローラータイプで使用できます。デフォルトのボリュームサイズを設定する方法の例については、ONTAP構成セクションを参照してください。
+
+[cols="3*"]
+|===
+| オプション | 概要 | 例 
+
+
+| `size`  a| 
+新しいボリュームのオプションのデフォルトサイズ。デフォルト： `1G`
+ a| 
+`10G`
+
+|===
+
+
+[[ontap-configuration]]
+== ONTAPの構成
+
+上記のグローバル設定値に加えて、ONTAPを使用する場合は、次の最上位オプションが利用可能です。
+
+[cols="3*"]
+|===
+| オプション | 概要 | 例 
+
+
+| `managementLIF`  a| 
+ONTAP管理LIFのIPアドレス。完全修飾ドメイン名（FQDN）を指定できます。
+ a| 
+`10.0.0.1`
+
+
+
+| `dataLIF`  a| 
+プロトコル LIF の IP アドレス。
+
+*ONTAP NAS ドライバー*：NetApp では指定することを推奨します `dataLIF`。指定しない場合、Trident は SVM から dataLIF を取得します。NFS マウント操作に使用する完全修飾ドメイン名（FQDN）を指定することで、ラウンドロビン DNS を作成し、複数の dataLIF 間で負荷分散を行うことができます。
+
+*ONTAP SAN ドライバー*：iSCSI または FC の場合は指定しないでください。Trident はlink:https://docs.netapp.com/us-en/ontap/san-admin/selective-lun-map-concept.html["ONTAP セレクティブLUNマップ"^]を使用して、マルチパス セッションを確立するために必要な iSCSI または FC LIF を検出します。警告が発生するのは、 `dataLIF`が明示的に定義されている場合です。
+ a| 
+`10.0.0.2`
+
+
+
+| `svm`  a| 
+使用するStorage Virtual Machine（管理LIFがクラスタLIFの場合は必須）
+ a| 
+`svm_nfs`
+
+
+
+| `username`  a| 
+ストレージデバイスに接続するためのユーザ名
+ a| 
+`vsadmin`
+
+
+
+| `password`  a| 
+ストレージデバイスに接続するためのパスワード
+ a| 
+`secret`
+
+
+
+| `aggregate`  a| 
+プロビジョニング用のアグリゲート（オプション。設定する場合は、SVMに割り当てる必要があります）。 `ontap-nas-flexgroup`ドライバーの場合、このオプションは無視されます。SVMに割り当てられたすべてのアグリゲートは、FlexGroupボリュームのプロビジョニングに使用されます。
+ a| 
+`aggr1`
+
+
+
+| `limitAggregateUsage`  a| 
+オプション：使用率がこのパーセンテージを超える場合はプロビジョニングを失敗します
+ a| 
+`75%`
+
+
+
+| `nfsMountOptions`  a| 
+NFSマウントオプションのきめ細かな制御。デフォルトは"-o nfsvers=3"です。* `ontap-nas`および `ontap-nas-economy`ドライバーでのみ使用可能* https://www.netapp.com/pdf.html?item=/media/10720-tr-4067.pdf["NFSホストの構成情報についてはここを参照してください"^]。
+ a| 
+`-o nfsvers=4`
+
+
+
+| `igroupName`  a| 
+Tridentはノードごとに `igroups`を `netappdvp`として作成および管理します。
+
+この値は変更または省略できません。
+
+* `ontap-san`ドライバでのみ使用可能*。
+ a| 
+`netappdvp`
+
+
+
+| `limitVolumeSize`  a| 
+要求可能な最大ボリュームサイズ。
+ a| 
+`300g`
+
+
+
+| `qtreesPerFlexvol`  a| 
+FlexVolあたりの最大qtree数は[50、300]の範囲内である必要があり、デフォルトは200です。
+
+* `ontap-nas-economy`ドライバの場合、このオプションを使用すると、FlexVolあたりのqtreeの最大数をカスタマイズできます*。
+ a| 
+`300`
+
+
+
+ a| 
+`sanType`
+| * `ontap-san`ドライバーのみでサポートされます。*iSCSIの場合は `iscsi`、NVMe/TCPの場合は `nvme`、SCSI over Fibre Channel（FC）の場合は `fcp`を選択します。 | `iscsi` 空白の場合 
+
+
+| `limitVolumePoolSize` | * `ontap-san-economy`および `ontap-san-economy`ドライバーでのみサポートされます。*ONTAPのontap-nas-economyおよびontap-san-economyドライバーでFlexVolのサイズを制限します。  a| 
+`300g`
+
+|===
+作成するボリュームごとに指定する必要がないように、デフォルトのオプションが用意されています。
+
+[cols="1,3,2"]
+|===
+| オプション | 概要 | 例 
+
+
+| `spaceReserve`  a| 
+スペース予約モード： `none`（シンプロビジョニング）または `volume`（シック）
+ a| 
+`none`
+
+
+
+| `snapshotPolicy`  a| 
+使用するSnapshotポリシー。デフォルトは `none`
+ a| 
+`none`
+
+
+
+| `snapshotReserve`  a| 
+Snapshotリザーブの割合。デフォルトは「」でONTAPのデフォルトを受け入れます
+ a| 
+`10`
+
+
+
+| `splitOnClone`  a| 
+クローン作成時に親からクローンを分割します。デフォルトは `false`
+ a| 
+`false`
+
+
+
+| `encryption`  a| 
+新しいボリュームでNetApp Volume Encryption（NVE）を有効にします。デフォルトは `false`です。このオプションを使用するには、クラスター上で NVE のライセンスを取得し、有効化する必要があります。
+
+バックエンドでNAEが有効になっている場合、TridentでプロビジョニングされたボリュームはすべてNAEが有効になります。
+
+詳細については、次を参照してください：link:../trident-reco/security-reco.html["Tridentと NVE および NAE の連携"]
+ a| 
+true
+
+
+
+| `unixPermissions`  a| 
+プロビジョニングされたNFSボリュームのNASオプション。デフォルトは `777`
+ a| 
+`777`
+
+
+
+| `snapshotDir`  a| 
+ `.snapshot`ディレクトリへのアクセスのためのNASオプション。
+ a| 
+ `.snapshot`ディレクトリへのアクセスを有効または無効にします。
+
+有効な値： `true`、 `false`。デフォルトの動作は、ONTAPおよびTridentのバージョンによって異なる場合があります。一貫した動作を保証するために、明示的に設定してください。
+
+
+
+| `exportPolicy`  a| 
+使用するNFSエクスポートポリシーのNASオプション。デフォルトは `default`です
+ a| 
+`default`
+
+
+
+| `securityStyle`  a| 
+プロビジョニングされたNFSボリュームにアクセスするためのNASオプション。
+
+NFSは `mixed`および `unix`セキュリティ スタイルをサポートします。デフォルトは `unix`です。
+ a| 
+`unix`
+
+
+
+| `fileSystemType`  a| 
+SANオプションでファイルシステムのタイプを選択します。デフォルトは `ext4`です
+ a| 
+`xfs`
+
+
+
+| `tieringPolicy`  a| 
+使用する階層化ポリシー。デフォルトは `none`です。
+ a| 
+`none`
+
+
+
+| `skipRecoveryQueue`  a| 
+ボリュームの削除中は、ストレージ内のリカバリキューをバイパスし、ボリュームを直ちに削除します。
+ a| 
+``
+
+|===
+
+
+[[scaling-options]]
+=== スケーリングオプション
+
+ `ontap-nas`および `ontap-san`ドライバーは、Docker ボリュームごとに ONTAP FlexVol を作成します。ONTAP は、クラスタノードあたり最大 1000 個のFlexVolsをサポートし、クラスタ全体では最大 12,000 個のFlexVolボリュームをサポートします。Docker ボリュームの要件がこの制限内に収まる場合、 `ontap-nas`ドライバーは、Docker ボリューム単位の Snapshot やクローン作成など、FlexVolsが提供する追加機能により、NAS ソリューションとして推奨されます。
+
+FlexVolの制限で収容できる数よりも多くのDockerボリュームが必要な場合は、 `ontap-nas-economy`または `ontap-san-economy`ドライバを選択してください。
+
+ `ontap-nas-economy`ドライバは、自動管理されるFlexVolボリュームのプール内で、DockerボリュームをONTAP Qtreeとして作成します。Qtreeは、一部の機能を犠牲にして、クラスタノードあたり最大100,000、クラスタあたり最大2,400,000という、はるかに優れたスケーリングを提供します。 `ontap-nas-economy`ドライバは、Dockerボリューム単位のSnapshotやクローニングをサポートしていません。
+
+
+NOTE:  `ontap-nas-economy`ドライバは、Docker Swarmが複数のノードにわたるボリューム作成を調整しないため、現在Docker Swarmではサポートされていません。
+
+ `ontap-san-economy`ドライバは、自動管理されるFlexVolボリュームの共有プール内で、DockerボリュームをONTAP LUNとして作成します。これにより、各FlexVolは1つのLUNに制限されず、SANワークロードに対してより優れたスケーラビリティを提供します。ストレージアレイによっては、ONTAPはクラスタあたり最大16384個のLUNをサポートします。ボリュームは内部的にLUNであるため、このドライバはDockerボリューム単位のスナップショットとクローニングをサポートします。
+
+ `ontap-nas-flexgroup`ドライバーを選択して、1つのボリュームへの並列性を高め、数十億のファイルを持つペタバイト規模まで拡張できます。FlexGroupsの理想的なユースケースには、AI／ML／DL、ビッグデータと分析、ソフトウェアビルド、ストリーミング、ファイルリポジトリなどがあります。Tridentは、FlexGroupボリュームをプロビジョニングする際にSVMに割り当てられたすべてのアグリゲートを使用します。TridentでのFlexGroupサポートには、以下の考慮事項もあります：
+
+* ONTAP バージョン 9.2 以降が必要です。
+* 本稿執筆時点では、FlexGroupsはNFS v3のみをサポートします。
+* SVM に対して 64 ビット NFSv3 識別子を有効にすることを推奨します。
+* 推奨される最小のFlexGroupメンバー/ボリュームサイズは100GiBです。
+* クローニングはFlexGroupボリュームではサポートされていません。
+
+
+FlexGroupsおよびFlexGroupsに適したワークロードの詳細については、 https://www.netapp.com/pdf.html?item=/media/12385-tr4571.pdf["NetApp FlexGroupボリュームのベストプラクティスと実装ガイド"^]を参照してください。
+
+同じ環境で高度な機能と大規模なスケールを実現するには、Dockerボリュームプラグインの複数のインスタンスを実行することができます。1つは `ontap-nas`を使用し、もう1つは `ontap-nas-economy`を使用します。
+
+
+
+[[custom-ontap-role-for-trident]]
+=== TridentのカスタムONTAP ロール
+
+最小限の権限を持つONTAPクラスタロールを作成することで、Tridentで操作を実行するためにONTAP管理者ロールを使用する必要がなくなります。Tridentバックエンド構成にユーザー名を含めると、Tridentは作成したONTAPクラスタロールを使用して操作を実行します。
+
+Tridentカスタムロールの作成の詳細については、link:https://github.com/NetApp/trident/tree/master/contrib/ontap/trident_role["Tridentカスタムロールジェネレーター"]を参照してください。
+
+[role="tabbed-block"]
+====
+.ONTAPコマンドラインの使用
+--
+. 次のコマンドを使用して新しいロールを作成します：
++
+`security login role create <role_name\> -cmddirname "command" -access all -vserver <svm_name\>`
+
+. Tridentユーザーのユーザー名を作成します：
++
+`security login create -username <user_name\> -application ontapi -authmethod password -role <name_of_role_in_step_1\> -vserver <svm_name\> -comment "user_description"`
+`security login create -username <user_name\> -application http -authmethod password -role <name_of_role_in_step_1\> -vserver <svm_name\> -comment "user_description"`
+
+. ロールをユーザーにマップします：
++
+`security login modify username <user_name\> -vserver <svm_name\> -role <role_name\> -application ontapi -application console -authmethod <password\>`
+
+
+
+--
+.System Managerを使用
+--
+ONTAP System Managerで次の手順を実行します。
+
+. *カスタムロールを作成する*：
++
+.. クラスタレベルでカスタムロールを作成するには、* Cluster > Settings *を選択します。
++
+（または）SVMレベルでカスタムロールを作成するには、*ストレージ > ストレージVM > `required SVM`> 設定 > ユーザーとロール*を選択します。
+
+.. *ユーザーとロール*の横にある矢印アイコン（*->*）を選択します。
+.. *Roles*の下の*+Add*を選択します。
+.. ロールのルールを定義し、*保存*をクリックします。
+
+
+. *Tridentユーザーに役割をマッピングする*：+*ユーザーとロール*ページで次の手順を実行します：
++
+.. *ユーザー*の下にある追加アイコン*+*を選択します。
+.. 必要なユーザー名を選択し、*Role*のドロップダウンメニューで役割を選択します。
+.. *保存*をクリックします。
+
+
+
+
+--
+====
+詳細については、次のページを参照してください：
+
+* link:https://kb.netapp.com/on-prem/ontap/Ontap_OS/OS-KBs/FAQ__Custom_roles_for_administration_of_ONTAP["ONTAPの管理用のカスタムロール"^] または link:https://docs.netapp.com/us-en/ontap/authentication/define-custom-roles-task.html["カスタム ロールの定義"^]
+* link:https://docs.netapp.com/us-en/ontap-automation/rest/rbac_roles_users.html#rest-api["ロールとユーザーを操作する"^]
+
+
+
+
+[[example-ontap-configuration-files]]
+=== ONTAP設定ファイルの例
+
+.<code>ontap-nas</code> ドライバのNFSの例
+[%collapsible]
+====
+[source, json]
+----
+{
+  "version": 1,
+  "storageDriverName": "ontap-nas",
+  "managementLIF": "10.0.0.1",
+  "dataLIF": "10.0.0.2",
+  "svm": "svm_nfs",
+  "username": "vsadmin",
+  "password": "password",
+  "aggregate": "aggr1",
+  "defaults": {
+    "size": "10G",
+    "spaceReserve": "none",
+    "exportPolicy": "default"
+  }
+}
+----
+====
+.<code>ontap-nas-flexgroup</code> ドライバのNFSの例
+[%collapsible]
+====
+[source, json]
+----
+{
+  "version": 1,
+  "storageDriverName": "ontap-nas-flexgroup",
+  "managementLIF": "10.0.0.1",
+  "dataLIF": "10.0.0.2",
+  "svm": "svm_nfs",
+  "username": "vsadmin",
+  "password": "password",
+  "defaults": {
+    "size": "100G",
+    "spaceReserve": "none",
+    "exportPolicy": "default"
+  }
+}
+----
+====
+.<code>ontap-nas-economy</code>ドライバのNFSの例
+[%collapsible]
+====
+[source, json]
+----
+{
+  "version": 1,
+  "storageDriverName": "ontap-nas-economy",
+  "managementLIF": "10.0.0.1",
+  "dataLIF": "10.0.0.2",
+  "svm": "svm_nfs",
+  "username": "vsadmin",
+  "password": "password",
+  "aggregate": "aggr1"
+}
+----
+====
+.<code>ontap-san</code> ドライバの iSCSI の例
+[%collapsible]
+====
+[source, json]
+----
+{
+  "version": 1,
+  "storageDriverName": "ontap-san",
+  "managementLIF": "10.0.0.1",
+  "dataLIF": "10.0.0.3",
+  "svm": "svm_iscsi",
+  "username": "vsadmin",
+  "password": "password",
+  "aggregate": "aggr1",
+  "igroupName": "netappdvp"
+}
+----
+====
+.<code>ontap-san-economy</code> ドライバのNFSの例
+[%collapsible]
+====
+[source, json]
+----
+{
+  "version": 1,
+  "storageDriverName": "ontap-san-economy",
+  "managementLIF": "10.0.0.1",
+  "dataLIF": "10.0.0.3",
+  "svm": "svm_iscsi_eco",
+  "username": "vsadmin",
+  "password": "password",
+  "aggregate": "aggr1",
+  "igroupName": "netappdvp"
+}
+----
+====
+.<code>ontap-san</code> ドライバのNVMe/TCPの例
+[%collapsible]
+====
+[source, json]
+----
+{
+  "version": 1,
+  "backendName": "NVMeBackend",
+  "storageDriverName": "ontap-san",
+  "managementLIF": "10.0.0.1",
+  "svm": "svm_nvme",
+  "username": "vsadmin",
+  "password": "password",
+  "sanType": "nvme",
+  "useREST": true
+}
+----
+====
+.<code>ontap-san</code> ドライバの SCSI over FC の例
+[%collapsible]
+====
+[source, json]
+----
+{
+  "version": 1,
+  "backendName": "ontap-san-backend",
+  "storageDriverName": "ontap-san",
+  "managementLIF": "10.0.0.1",
+  "sanType": "fcp",
+  "svm": "trident_svm",
+  "username": "vsadmin",
+  "password": "password",
+  "useREST": true
+}
+----
+====
+
+
+[[element-software-configuration]]
+== Element ソフトウェア構成
+
+グローバル設定値に加えて、Element ソフトウェア（NetApp HCI/SolidFire）を使用する場合、これらのオプションが利用可能です。
+
+[cols="3*"]
+|===
+| オプション | 概要 | 例 
+
+
+| `Endpoint`  a| 
+\https://<login>：<password>@<mvip>/json-rpc/<element-version>
+ a| 
+\https://admin:admin@192.168.160.3/json-rpc/8.0
+
+
+
+| `SVIP`  a| 
+iSCSI IPアドレスとポート
+ a| 
+10.0.0.7:3260
+
+
+
+| `TenantName`  a| 
+使用する SolidFire テナント（見つからない場合は作成）
+ a| 
+`docker`
+
+
+
+| `InitiatorIFace`  a| 
+iSCSI トラフィックをデフォルト以外のインターフェイスに制限する場合にインターフェイスを指定する
+ a| 
+`default`
+
+
+
+| `Types`  a| 
+QoS仕様
+ a| 
+下記の例をご覧ください
+
+
+
+| `LegacyNamePrefix`  a| 
+アップグレードされた Trident インストールのプレフィックス。1.3.2 より前のバージョンの Trident を使用していて、既存のボリュームでアップグレードを実行する場合は、ボリューム名方式でマッピングされた古いボリュームにアクセスするために、この値を設定する必要があります。
+ a| 
+`netappdvp-`
+
+|===
+ `solidfire-san`ドライバは Docker Swarm をサポートしていません。
+
+
+
+[[example-element-software-configuration-file]]
+=== Element ソフトウェア構成ファイルの例
+
+[source, json]
+----
+{
+  "version": 1,
+  "storageDriverName": "solidfire-san",
+  "Endpoint": "https://admin:admin@192.168.160.3/json-rpc/8.0",
+  "SVIP": "10.0.0.7:3260",
+  "TenantName": "docker",
+  "InitiatorIFace": "default",
+  "Types": [
+    {
+      "Type": "Bronze",
+      "Qos": {
+        "minIOPS": 1000,
+        "maxIOPS": 2000,
+        "burstIOPS": 4000
+      }
+    },
+    {
+      "Type": "Silver",
+      "Qos": {
+        "minIOPS": 4000,
+        "maxIOPS": 6000,
+        "burstIOPS": 8000
+      }
+    },
+    {
+      "Type": "Gold",
+      "Qos": {
+        "minIOPS": 6000,
+        "maxIOPS": 8000,
+        "burstIOPS": 10000
+      }
+    }
+  ]
+}
+----

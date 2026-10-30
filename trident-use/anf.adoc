@@ -1,0 +1,185 @@
+---
+sidebar: sidebar 
+permalink: trident-use/anf.html 
+keywords: trident backend, azure netapp files, smb volumes, smb, windows, drivers, access modes, rwo, rwx, rwp, rwop, file system, aks, managed identities, azure, azure government 
+summary: Azure NetApp Files を Trident のバックエンドとして構成し、NFS または SMB ボリュームを使用します。Trident は、AKS クラスター上のマネージド ID とワークロード ID をサポートします。 
+---
+= Azure NetApp Files バックエンドを構成する
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Azure NetApp Files を Trident のバックエンドとして使用します。このバックエンドは NFS および SMB ボリュームをサポートしています。Trident は Azure Kubernetes Service （AKS） クラスターのマネージド ID とワークロード ID をサポートします。
+
+
+
+[[supported-azure-cloud-environments]]
+== サポートされているAzureクラウド環境
+
+Tridentは、複数のAzureクラウド環境でAzure NetApp Filesバックエンドをサポートしています。
+
+サポートされている Azure クラウドは以下のとおりです：
+
+* Azure Commercial
+* Azure Government（Azure Government / MAG）
+* Azure China
+
+
+Trident をデプロイするか、Azure NetApp Files バックエンドを設定する際は、Azure Resource Manager と認証エンドポイントが Azure クラウド環境と一致していることを確認してください。
+
+
+
+[[review-azure-netapp-files-driver-support]]
+== Azure NetApp Files ドライバサポートの確認
+
+Tridentは、以下のAzure NetApp Filesストレージドライバを提供します。
+
+サポートされているアクセスモードには、_ReadWriteOnce_ （RWO）、_ReadOnlyMany_ （ROX）、_ReadWriteMany_ （RWX）、および _ReadWriteOncePod_ （RWOP）があります。
+
+[cols="2,1,1,2,2"]
+|===
+| Driver | プロトコル | volumeMode | サポートされているアクセスモード | サポートされているファイルシステム 
+
+
+| `azure-netapp-files`  a| 
+NFS SMB
+ a| 
+Filesystem
+ a| 
+RWO、ROX、RWX、RWOP
+ a| 
+`nfs`, `smb`
+
+|===
+
+
+[[review-considerations]]
+== レビューに関する考慮事項
+
+* Azure NetApp Files は 50 GiB 未満のボリュームをサポートしていません。Trident は、より小さなボリュームが要求された場合でも、50 GiB のボリュームを作成します。
+* Trident は、 Windows ノード上で実行されているポッドにマウントされた SMB ボリュームのみをサポートします。
+* Azure NetApp Files を非商用 Azure クラウドにデプロイするには、クラウド固有の Azure Resource Manager と認証エンドポイントが必要です。Trident およびすべてのバックエンド構成で、Azure クラウド環境に適したエンドポイントを使用していることを確認してください。
+
+
+
+
+[[use-managed-identities-for-aks]]
+== AKS にマネージド ID を使用する
+
+TridentはAKSクラスター向けにlink:https://learn.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/overview["マネージド ID"^]をサポートしています。
+
+ `tridentctl`を使用して Azure NetApp Files バックエンドを作成または管理する場合は、正しい Azure クラウド環境向けに構成されていることを確認してください。
+
+マネージドIDを使用するには、以下のものが必要です：
+
+* AKS を使用してデプロイされた Kubernetes クラスタ
+* AKS Kubernetes クラスターで構成された管理対象 ID
+* Tridentが `cloudProvider`を `"Azure"`に設定してインストール済み
+
+
+[role="tabbed-block"]
+====
+.Trident オペレータ
+--
+ `tridentorchestrator_cr.yaml`を編集し、 `cloudProvider`を `"Azure"`に設定します。
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  debug: true
+  namespace: trident
+  imagePullPolicy: IfNotPresent
+  cloudProvider: "Azure"
+----
+--
+.Helm
+--
+次の例では、Tridentをインストールし、環境変数 `$CP`を使用して `cloudProvider`を設定します：
+
+[listing]
+----
+helm install trident trident-operator-100.2606.0.tgz --create-namespace --namespace <trident-namespace> --set cloudProvider=$CP
+----
+--
+.<code>tridentctl</code>
+--
+次の例では Trident をインストールし、 `cloud-provider` フラグを `Azure`に設定します：
+
+[listing]
+----
+tridentctl install --cloud-provider="Azure" -n trident
+----
+--
+====
+
+
+[[use-workload-identity-for-aks]]
+== AKS のワークロード ID を使用する
+
+ワークロードIDを使用すると、KubernetesポッドはワークロードIDとして認証することでAzureリソースにアクセスできるようになります。
+
+ `tridentctl`を使用して Azure NetApp Files バックエンドを作成または管理する場合は、正しい Azure クラウド環境向けに構成されていることを確認してください。
+
+ワークロードIDを使用するには、以下のものが必要です。
+
+* AKS を使用してデプロイされた Kubernetes クラスタ
+* AKS Kubernetes クラスタで設定されたワークロード ID と oidc-issuer
+* Tridentは `cloudProvider`を `"Azure"`に設定し、 `cloudIdentity`をワークロード識別値に設定してインストール済み
+
+
+[role="tabbed-block"]
+====
+.Trident オペレータ
+--
+ `tridentorchestrator_cr.yaml`を編集し、 `cloudProvider`を `"Azure"`に設定します。 `cloudIdentity`を `azure.workload.identity/client-id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx`に設定します。
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  debug: true
+  namespace: trident
+  imagePullPolicy: IfNotPresent
+  cloudProvider: "Azure"
+  cloudIdentity: 'azure.workload.identity/client-id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx' # Edit
+----
+--
+.Helm
+--
+以下の環境変数を使用して、*cloud-provider（CP）* および *cloud-identity（CI）* フラグの値を設定します：
+
+`export CP="Azure"`
+`export CI="'azure.workload.identity/client-id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx'"`
+
+次の例では、Tridentをインストールし、 `$CP`を使用して `cloudProvider`を設定し、 `$CI`を使用して `cloudIdentity`を設定します：
+
+[listing]
+----
+helm install trident trident-operator-100.6.0.tgz --set cloudProvider=$CP --set cloudIdentity="$CI"
+----
+--
+.<code>tridentctl</code>
+--
+*クラウド プロバイダ* および *クラウド ID* フラグの値を、以下の環境変数を使用して設定します：
+
+`export CP="Azure"`
+`export CI="azure.workload.identity/client-id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx"`
+
+次の例では、Trident をインストールし、 `cloud-provider`を `$CP`に、 `cloud-identity`を `$CI`に設定します：
+
+[listing]
+----
+tridentctl install --cloud-provider=$CP --cloud-identity="$CI" -n trident
+----
+--
+====

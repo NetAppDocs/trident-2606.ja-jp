@@ -1,0 +1,15 @@
+---
+sidebar: sidebar 
+permalink: trident-reference/k8s-concepts.html 
+keywords: kubernetes, clusters, master, compute, architecture 
+summary: Kubernetes システムの各部分について詳しく学びます。 
+---
+= Kubernetesの概念
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+ https://kubernetes.io/docs/concepts/["Kubernetes システム"^]の各部の詳細をご覧ください。

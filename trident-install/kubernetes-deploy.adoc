@@ -1,0 +1,232 @@
+---
+sidebar: sidebar 
+permalink: trident-install/kubernetes-deploy.html 
+keywords: deploy, Trident, methods, operator, tridentctl, helm, tanzu, vmware 
+summary: 'Tridentは、Tridentオペレーター（手動またはHelmを使用）を使用するか、 `tridentctl`を使用してインストールできます。このトピックでは、適切なインストールプロセスを選択するための重要な情報を提供します。' 
+---
+= Tridentのインストールについて
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentをさまざまな環境や組織に導入できるようにするため、NetAppでは複数のインストールオプションを提供しています。Tridentは、Tridentオペレーター（手動またはHelmを使用）を使用するか、 `tridentctl`を使用してインストールできます。このトピックでは、適切なインストールプロセスを選択するための重要な情報を提供します。
+
+
+
+[[critical-information-about-trident-26-06]]
+== Trident 26.06に関する重要な情報
+
+*Trident に関する以下の重要な情報を必ずお読みください。*
+
+.<strong>Tridentに関する重要な情報</strong>
+[%collapsible%open]
+====
+[]
+=====
+* Kubernetes は Trident でサポートされるようになりました。Kubernetes をアップグレードする前に、Trident をアップグレードしてください。
+* Trident は SAN 環境でのマルチパス構成の使用を厳格に強制し、multipath.conf ファイル内の推奨値は `find_multipaths: no`です。
++
+非マルチパス構成の使用、または multipath.conf ファイルでの `find_multipaths: yes`または `find_multipaths: smart`値の使用は、マウントの失敗を引き起こします。Trident は、 21.07 リリース以降 `find_multipaths: no`の使用を推奨しています。
+
+
+
+=====
+====
+
+
+[[before-you-begin]]
+== 開始する前に
+
+インストール パスに関係なく、次のものが必要です：
+
+* サポートされているバージョンの Kubernetes を実行し、機能要件が有効になっている、サポートされている Kubernetes クラスターに対する完全な権限。詳細については、link:../trident-get-started/requirements.html["要件"]を参照してください。
+* サポートされているNetAppストレージシステムへのアクセス。
+* すべての Kubernetes ワーカーノードからボリュームをマウントする機能。
+*  `kubectl`（または、OpenShiftを使用している場合は `oc`）がインストールされ、使用するKubernetesクラスタを管理するように設定されたLinuxホスト。
+*  `KUBECONFIG`環境変数をKubernetesクラスター構成を指すように設定します。
+* Docker EnterpriseでKubernetesを使用している場合は、 https://docs.docker.com/ee/ucp/user-access/cli/["手順に従ってCLIアクセスを有効にします"^]。
+* クラスターは特権ワークロードをサポートする必要があります。
+
+
+
+TIP: link:../trident-get-started/intro.html["基本的な概念"^]にまだ慣れていない場合は、今こそそれを実行する絶好の機会です。
+
+
+
+[[choose-your-installation-method]]
+== インストール方法を選択してください
+
+適切なインストール方法を選択してください。決定を下す前にlink:kubernetes-deploy.html#moving-between-installation-methods["方法間の移動"]の考慮事項も確認する必要があります。
+
+
+
+[[using-the-trident-operator]]
+=== Tridentオペレーターの使用
+
+手動でのデプロイでもHelmを使用する場合でも、Tridentオペレーターはインストールを簡素化し、Tridentリソースを動的に管理する優れた方法です。link:kubernetes-customize-deploy.html["Tridentオペレータの導入をカスタマイズ"] を使用して、 `TridentOrchestrator` カスタムリソース（CR）の属性を設定することもできます。
+
+Trident Operatorを使用する利点は次のとおりです：
+
+.<strong>Tridentオブジェクトの作成</strong>
+[%collapsible]
+====
+Trident オペレーターは、Kubernetes バージョンに応じて次のオブジェクトを自動的に作成します。
+
+* オペレーター向けのServiceAccount
+* ClusterRole および ClusterRoleBinding を ServiceAccount に追加
+* 専用のPodSecurityPolicy（Kubernetes 1.25以前の場合）
+* オペレータ自体
+
+
+====
+.<strong>リソースのアカウンタビリティ</strong>
+[%collapsible]
+====
+クラスタースコープのTridentオペレーターは、クラスターレベルでのTridentインストールに関連するリソースを管理します。これにより、ネームスペーススコープのオペレーターを使用してクラスタースコープのリソースを管理するときに発生する可能性のあるエラーが軽減されます。これは自己修復とパッチ適用に不可欠です。
+
+====
+.<strong>自己修復機能</strong>
+[%collapsible]
+====
+オペレーターはTridentのインストールを監視し、デプロイメントが削除されたり誤って変更されたりした場合などの問題に対処するための対策を積極的に講じます。 `trident-operator-<generated-id>`ポッドが作成され、 `TridentOrchestrator` CRとTridentのインストールが関連付けられます。これにより、クラスター内にTridentのインスタンスが1つだけ存在することが保証され、そのセットアップが制御され、インストールがべき等であることが確認されます。インストールに変更が加えられると（デプロイメントまたはノードデーモンセットの削除など）、オペレーターはそれらを識別し、個別に修正します。
+
+====
+.<strong>既存のインストールへの簡単なアップデート</strong>
+[%collapsible]
+====
+オペレーターを使用すると、既存のデプロイメントを簡単に更新できます。インストールを更新するには、 `TridentOrchestrator` CR を編集するだけです。
+
+例えば、Tridentでデバッグログを生成する必要があるシナリオを考えてみましょう。これを行うには、 `TridentOrchestrator`にパッチを適用して `spec.debug`を `true`に設定します：
+
+[listing]
+----
+kubectl patch torc <trident-orchestrator-name> -n trident --type=merge -p '{"spec":{"debug":true}}'
+----
+ `TridentOrchestrator`が更新されると、オペレーターは更新を処理し、既存のインストールにパッチを適用します。これにより、新しいポッドの作成がトリガーされ、それに応じてインストールが変更される可能性があります。
+
+====
+.<strong>クリーンな再インストール</strong>
+[%collapsible]
+====
+クラスタスコープのTridentオペレータを使用すると、クラスタスコープのリソースを完全に削除できます。ユーザはTridentを完全にアンインストールして、簡単に再インストールできます。
+
+====
+.<strong>Kubernetesの自動アップグレード処理</strong>
+[%collapsible]
+====
+クラスターのKubernetesバージョンがサポートされているバージョンにアップグレードされると、オペレーターは既存のTridentインストールを自動的に更新し、Kubernetesバージョンの要件を満たすように変更します。
+
+
+NOTE: クラスタがサポートされていないバージョンにアップグレードされた場合、オペレータはTridentのインストールを禁止します。Tridentがオペレータですでにインストールされている場合は、Tridentがサポートされていない Kubernetes バージョンにインストールされていることを示す警告が表示されます。
+
+====
+
+
+[[using-tridentctl]]
+=== 使用 `tridentctl`
+
+既存の展開をアップグレードする必要がある場合、または展開を高度にカスタマイズしたい場合は、を検討する必要があります。これは、Tridentを導入する従来の方法です。
+
+を使用して、Tridentリソースのマニフェストを生成できます。これには、Tridentがインストールの一部として作成するデプロイメント、デーモンセット、サービスアカウント、およびクラスタロールが含まれます。
+
+
+NOTE: 22.04リリース以降、Tridentのインストール時にAESキーが再生成されることはなくなります。このリリースでは、Tridentはインストール間で保持される新しいシークレットオブジェクトをインストールします。つまり、 `tridentctl`22.04では以前のバージョンのTridentをアンインストールできますが、以前のバージョンでは22.04インストールをアンインストールできません。適切なインストール_方法_を選択してください。
+
+
+
+[[choose-your-installation-mode]]
+== インストールモードを選択してください
+
+組織に必要な_インストールモード_（標準、オフライン、またはリモート）に基づいて展開プロセスを決定します。
+
+[role="tabbed-block"]
+====
+.標準インストール
+--
+これはTridentをインストールする最も簡単な方法で、ネットワーク制限を課さないほとんどの環境で動作します。標準インストールモードでは、必要なTrident(`docker.io`およびCSI(`registry.k8s.io`イメージを格納するためにデフォルトのレジストリを使用します。
+
+標準モードを使用する場合、Tridentインストーラは次の処理を実行します：
+
+* インターネット経由でコンテナイメージを取得します
+* デプロイメントまたはノードデーモンセットを作成し、Kubernetesクラスター内のすべての適格ノード上でTridentポッドを起動します
+
+
+--
+.オフラインインストール
+--
+エアギャップまたは安全な場所では、オフラインインストールモードが必要になる場合があります。このシナリオでは、必要なTridentおよびCSIイメージを格納するために、単一のプライベートなミラーレジストリまたは2つのミラーレジストリを作成できます。
+
+
+NOTE: レジストリ構成に関係なく、CSI イメージは 1 つのレジストリに存在する必要があります。
+
+--
+.リモートインストール
+--
+リモート インストール プロセスの概要：
+
+* Tridentを導入するリモートマシンに、適切なバージョンの `kubectl`を導入します。
+* Kubernetes クラスタから設定ファイルをコピーし、リモートマシンで `KUBECONFIG`環境変数を設定します。
+*  `kubectl get nodes`コマンドを実行して、必要な Kubernetes クラスターに接続できることを確認します。
+* 標準のインストール手順を使用して、リモートマシンからの導入を完了します。
+
+
+--
+====
+
+
+[[select-the-process-based-on-your-method-and-mode]]
+== 方法とモードに基づいてプロセスを選択します
+
+決定したら、適切なプロセスを選択します。
+
+[cols="2"]
+|===
+| 方法 | インストールモード 
+
+
+| Tridentオペレーター（手動）  a| 
+link:kubernetes-deploy-operator.html["標準インストール"]
+
+link:kubernetes-deploy-operator-mirror.html["オフラインインストール"]
+
+
+
+| Tridentオペレーター（Helm）  a| 
+link:kubernetes-deploy-helm.html["標準インストール"]
+
+link:kubernetes-deploy-helm-mirror.html["オフラインインストール"]
+
+
+
+| `tridentctl`  a| 
+link:kubernetes-deploy-tridentctl.html["標準またはオフラインインストール"]
+
+|===
+
+
+[[moving-between-installation-methods]]
+== インストール方法間の移行
+
+インストール方法を変更することもできます。これを実行する前に、次の点を考慮してください：
+
+* Tridentのインストールとアンインストールには常に同じ方法を使用してください。 `tridentctl`で導入した場合は、適切なバージョンの `tridentctl`バイナリを使用してTridentをアンインストールする必要があります。同様に、オペレーターでデプロイする場合は、 `TridentOrchestrator` CRを編集し、 `spec.uninstall=true`を設定してTridentをアンインストールする必要があります。
+* 削除して代わりに使用したいオペレーターベースのデプロイメントがある場合 `tridentctl`Tridentを展開するには、まず `TridentOrchestrator`を編集して `spec.uninstall=true`を設定し、Tridentをアンインストールする必要があります。次に `TridentOrchestrator`とオペレータのデプロイメントを削除します。その後、 `tridentctl`を使用してインストールできます。
+* 手動のオペレーターベースのデプロイメントがあり、HelmベースのTridentオペレーターをデプロイする場合は、まずオペレーターを手動でアンインストールしてから、Helmのインストールを実行する必要があります。これにより、Helmは必要なラベルとアノテーションを持つTridentオペレーターをデプロイできます。これを行わないと、HelmベースのTridentオペレーターのデプロイメントは、ラベル検証エラーとアノテーション検証エラーにより失敗します。
+*  `tridentctl`ベースのデプロイメントを使用している場合は、Tridentをアンインストールせずに、HelmベースまたはOperatorベースのデプロイメントを実行できます。
+
+
+
+
+[[other-known-configuration-options]]
+== その他の既知の設定オプション
+
+VMWare Tanzu ポートフォリオ製品に Trident をインストールする場合：
+
+*  `--kubelet-dir`フラグは kubelet ディレクトリの場所に設定する必要があります。デフォルトでは、 `/var/vcap/data/kubelet`です。
++
+ `--kubelet-dir`を使用してkubeletの場所を指定することは、Trident Operator、Helm、および `tridentctl`デプロイメントで機能することが知られています。
+
+

@@ -1,0 +1,79 @@
+---
+sidebar: sidebar 
+permalink: trident-docker/collect-logs-docker.html 
+keywords: deploy, Trident, trident for docker, docker, logs, binary, managed plugin 
+summary: トラブルシューティングに役立つログを収集できます。ログを収集するために使用する方法は、Dockerプラグインの実行方法によって異なります。 
+---
+= ログを収集する
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+トラブルシューティングに役立つログを収集できます。ログを収集するために使用する方法は、Dockerプラグインの実行方法によって異なります。
+
+
+
+[[collect-logs-for-troubleshooting]]
+== トラブルシューティングのためにログを収集する
+
+.手順
+. 推奨される管理プラグイン方式を使用してTridentを実行している場合（つまり、 `docker plugin`コマンドを使用）、次のように表示します：
++
+[source, console]
+----
+docker plugin ls
+----
++
+[listing]
+----
+ID                  NAME                DESCRIPTION                          ENABLED
+4fb97d2b956b        netapp:latest       nDVP - NetApp Docker Volume Plugin   false
+journalctl -u docker | grep 4fb97d2b956b
+----
++
+標準のログレベルでは、ほとんどの問題を診断できます。それだけでは不十分な場合は、デバッグログを有効にすることができます。
+
+. デバッグ ログを有効にするには、デバッグ ログを有効にしたプラグインをインストールします：
++
+[source, console]
+----
+docker plugin install netapp/trident-plugin:<version> --alias <alias> debug=true
+----
++
+または、プラグインがすでにインストールされている場合は、デバッグログを有効にします：
+
++
+[source, console]
+----
+docker plugin disable <plugin>
+----
++
+[source, console]
+----
+docker plugin set <plugin> debug=true
+----
++
+[source, console]
+----
+docker plugin enable <plugin>
+----
+. バイナリ自体をホスト上で実行している場合、ログはホストの `/var/log/netappdvp`ディレクトリで利用できます。デバッグログを有効にするには、プラグインを実行するときに `-debug`を指定します。
+
+
+
+
+[[general-troubleshooting-tips]]
+== 一般的なトラブルシューティングのヒント
+
+* 新しいユーザーが遭遇する最も一般的な問題は、プラグインの初期化を妨げる誤った構成です。このような場合、プラグインをインストールまたは有効化しようとすると、次のようなメッセージが表示される可能性があります：
++
+`Error response from daemon: dial unix /run/docker/plugins/<id>/netapp.sock: connect: no such file or directory`
+
++
+これは、プラグインの起動に失敗したことを意味します。幸いなことに、このプラグインには包括的なログ機能が組み込まれているため、発生する可能性のあるほとんどの問題の診断に役立ちます。
+
+* PVをコンテナにマウントする際に問題がある場合は、 `rpcbind`がインストールされ実行されていることを確認してください。ホストOSに必要なパッケージマネージャーを使用して、 `rpcbind`が実行中かどうかを確認してください。rpcbindサービスのステータスを確認するには、 `systemctl status rpcbind`またはそれに相当するコマンドを実行します。
+

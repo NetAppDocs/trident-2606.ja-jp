@@ -1,0 +1,22 @@
+---
+section: trident-managing-k8s
+title: Tridentの管理と監視
+entries:
+- title: Tridentのアップグレード
+  entries:
+  - title: アップグレードの概要
+    url: "/trident-managing-k8s/upgrade-trident.html"
+  - title: オペレータを使用したアップグレード
+    entries:
+    - title: オペレーターのアップグレードワークフローを理解する
+      url: "/trident-managing-k8s/upgrade-operator-overview.html"
+    - title: オペレータを使用したアップグレード
+      url: "/trident-managing-k8s/upgrade-operator.html"
+  - title: tridentctl によるアップグレード
+    url: "/trident-managing-k8s/upgrade-tridentctl.html"
+- title: tridentctlを使用してTridentを管理する
+  url: "/trident-managing-k8s/tridentctl.html"
+- title: Tridentを監視
+  url: "/trident-use/monitor-trident.html"
+- title: Tridentのアンインストール
+  url: "/trident-managing-k8s/uninstall-trident.html"

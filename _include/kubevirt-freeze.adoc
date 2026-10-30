@@ -1,0 +1,41 @@
+= 
+:allow-uri-read: 
+
+
+Trident Protectは、データ保護操作中にKubeVirt仮想マシンのファイルシステムのフリーズとアンフリーズ機能を提供し、データの整合性を確保します。VMフリーズ操作の設定方法とデフォルトの動作はTrident Protectのバージョンによって異なり、新しいリリースではHelmチャートパラメータを通じて簡素化された設定が提供されます。
+
+
+NOTE: 復元操作中は、仮想マシン（VM）用に作成された `VirtualMachineSnapshots`は復元されません。
+
+.Trident Protect 25.10以降
+[%collapsible%open]
+====
+Trident Protectは、データ保護処理中にKubeVirtファイルシステムを自動的にフリーズおよびアンフリーズして、整合性を確保します。Trident Protect 25.10以降では、Helmチャートのインストール時に `vm.freeze`パラメータを使用してこの動作を無効にできます。このパラメータはデフォルトで有効になっています。
+
+[source, console]
+----
+helm install ... --set vm.freeze=false ...
+----
+====
+.Trident Protect 24.10.1～25.06
+[%collapsible]
+====
+Trident Protect 24.10.1以降、Trident Protectはデータ保護操作中にKubeVirtファイルシステムを自動的にフリーズおよびアンフリーズします。オプションで、次のコマンドを使用してこの自動動作を無効にすることができます：
+
+[source, console]
+----
+kubectl set env deployment/trident-protect-controller-manager NEPTUNE_VM_FREEZE=false -n trident-protect
+----
+====
+.Trident Protect 24.10
+[%collapsible]
+====
+Trident Protect 24.10は、データ保護処理中にKubeVirt VMファイルシステムの整合性のある状態を自動的に保証するものではありません。KubeVirt VMデータをTrident Protect 24.10を使用して保護する場合は、データ保護処理の前に、ファイルシステムのフリーズ/アンフリーズ機能を手動で有効にする必要があります。これにより、ファイルシステムが整合性のある状態になることが保証されます。
+
+Trident Protect 24.10を設定して、link:https://docs.redhat.com/en/documentation/openshift_container_platform/4.16/html/virtualization/index["仮想化の設定"^]を使用し、次のコマンドを実行することで、データ保護操作中にVMファイルシステムの凍結と解凍を管理できます：
+
+[source, console]
+----
+kubectl set env deployment/trident-protect-controller-manager NEPTUNE_VM_FREEZE=true -n trident-protect
+----
+====

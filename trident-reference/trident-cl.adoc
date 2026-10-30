@@ -1,0 +1,59 @@
+---
+sidebar: sidebar 
+permalink: trident-reference/trident-cl.html 
+keywords: command-line, options, logging, kubernetes, docker, ports 
+summary: Trident は、 Trident オーケストレータ用のいくつかのコマンドラインオプションを公開し、特定のポートを介して通信します。 
+---
+= コマンドラインオプション
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentは、Tridentオーケストレーター用のいくつかのコマンドラインオプションを公開します。これらのオプションを使用して、デプロイメントを変更できます。
+
+
+
+[[logging]]
+== ロギング
+
+`-debug`:: デバッグ出力を有効にします。
+`-loglevel <level>`:: ログレベル（debug、info、warn、error、fatal）を設定します。デフォルトはinfoです。
+
+
+
+
+[[kubernetes]]
+== Kubernetes
+
+`-k8s_pod`:: このオプションまたは `-k8s_api_server`を使用して、Kubernetesサポートを有効にします。これを設定すると、Tridentは、含まれているポッドのKubernetesサービスアカウントのクレデンシャルを使用してAPIサーバに接続します。これは、Tridentがサービスアカウントが有効になっているKubernetesクラスタ内のポッドとして実行されている場合にのみ機能します。
+`-k8s_api_server <insecure-address:insecure-port>`:: このオプションまたは `-k8s_pod`を使用して、Kubernetesサポートを有効にします。指定すると、Tridentは、提供された安全でないアドレスとポートを使用してKubernetes APIサーバーに接続します。これにより、Tridentをポッドの外部に導入できますが、APIサーバーへの安全でない接続のみがサポートされます。安全に接続するには、 `-k8s_pod`オプションを使用してポッド内にTridentを導入します。
+
+
+
+
+[[docker]]
+== Docker
+
+`-volume_driver <name>`:: Dockerプラグインを登録する際に使用されるドライバ名。デフォルトは `netapp`。
+`-driver_port <port-number>`:: UNIX ドメインソケットではなく、このポートでリッスンします。
+`-config <file>`:: 必須。バックエンド構成ファイルへのこのパスを指定する必要があります。
+
+
+
+
+[[rest]]
+== REST
+
+`-address <ip-or-host>`:: Trident の REST サーバーがリッスンするアドレスを指定します。デフォルトは localhost です。localhost でリッスンし、Kubernetes ポッド内で実行している場合、ポッドの外部から REST インターフェイスに直接アクセスすることはできません。 `-address ""`を使用して、ポッド IP アドレスから REST インターフェイスにアクセスできるようにします。
++
+--
+
+CAUTION: Trident REST インターフェイスは、127.0.0.1（IPv4 の場合）または [::1]（IPv6 の場合）でのみリッスンおよびサービスを提供するように構成できます。
+
+--
+`-port <port-number>`:: Trident の REST サーバーがリッスンするポートを指定します。デフォルトは 8000 です。
+`-rest`:: REST インターフェイスを有効にします。デフォルトは true です。
+

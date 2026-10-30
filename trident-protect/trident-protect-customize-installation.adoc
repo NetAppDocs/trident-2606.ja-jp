@@ -1,0 +1,240 @@
+---
+sidebar: sidebar 
+permalink: trident-protect/trident-protect-customize-installation.html 
+keywords: customize, trident protect, resource limits, security context constraints, SCC, NetApp AutoSupport, proxy connection, helm, helm chart, helm upgrade 
+summary: Trident Protectのデフォルト設定を、特定のニーズに合わせてカスタマイズします。 
+---
+= Trident Protectのインストールをカスタマイズする
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+環境の特定の要件を満たすように Trident Protect のデフォルト設定をカスタマイズできます。
+
+
+
+[[specify-trident-protect-container-resource-limits]]
+== Trident Protectコンテナのリソース制限を指定する
+
+Trident Protectのインストール後、設定ファイルを使用してTrident Protectコンテナのリソース制限を指定できます。リソース制限を設定すると、Trident Protect操作によって消費されるクラスタのリソース量を制御できます。
+
+.手順
+.  `resourceLimits.yaml`という名前のファイルを作成します。
+. 環境のニーズに応じて、Trident Protectコンテナのリソース制限オプションをファイルに入力します。
++
+次の構成ファイルの例は、使用可能な設定を示しており、各リソース制限のデフォルト値が含まれています：
+
++
+[source, yaml]
+----
+---
+jobResources:
+  defaults:
+    limits:
+      cpu: 8000m
+      memory: 10000Mi
+      ephemeralStorage: ""
+    requests:
+      cpu: 100m
+      memory: 100Mi
+      ephemeralStorage: ""
+  resticVolumeBackup:
+    limits:
+      cpu: ""
+      memory: ""
+      ephemeralStorage: ""
+    requests:
+      cpu: ""
+      memory: ""
+      ephemeralStorage: ""
+  resticVolumeRestore:
+    limits:
+      cpu: ""
+      memory: ""
+      ephemeralStorage: ""
+    requests:
+      cpu: ""
+      memory: ""
+      ephemeralStorage: ""
+  kopiaVolumeBackup:
+    limits:
+      cpu: ""
+      memory: ""
+      ephemeralStorage: ""
+    requests:
+      cpu: ""
+      memory: ""
+      ephemeralStorage: ""
+  kopiaVolumeRestore:
+    limits:
+      cpu: ""
+      memory: ""
+      ephemeralStorage: ""
+    requests:
+      cpu: ""
+      memory: ""
+      ephemeralStorage: ""
+----
+.  `resourceLimits.yaml`ファイルから値を適用します：
++
+[source, console]
+----
+helm upgrade trident-protect -n trident-protect netapp-trident-protect/trident-protect -f resourceLimits.yaml --reuse-values
+----
+
+
+
+
+[[customize-security-context-constraints]]
+== セキュリティコンテキスト制約をカスタマイズする
+
+Trident Protect のインストール後、設定ファイルを使用して Trident Protect コンテナの OpenShift セキュリティコンテキスト制約（SCC）を変更できます。これらの制約は、Red Hat OpenShift クラスタ内のポッドのセキュリティ制限を定義します。
+
+.手順
+.  `sccconfig.yaml`という名前のファイルを作成します。
+. ファイルに SCC オプションを追加し、環境のニーズに応じてパラメータを変更します。
++
+次の例は、SCC オプションのパラメータのデフォルト値を示しています：
+
++
+[source, yaml]
+----
+scc:
+  create: true
+  name: trident-protect-job
+  priority: 1
+----
++
+この表は、SCC オプションのパラメータについて説明しています：
+
++
+|===
+| パラメータ | 概要 | デフォルト 
+
+
+| 作成する | SCC リソースを作成できるかどうかを決定します。SCC リソースは、 `scc.create`が `true`に設定されていて、Helm インストールプロセスがOpenShift環境を識別した場合にのみ作成されます。OpenShiftで動作していない場合、または `scc.create`が `false`に設定されている場合、SCC リソースは作成されません。 | true 
+
+
+| 名前 | SCCの名前を指定します。 | trident-protect-job 
+
+
+| 優先度 | SCC の優先度を定義します。優先度の値が高い SCC は、値が低い SCC よりも先に評価されます。 | 1 
+|===
+.  `sccconfig.yaml`ファイルから値を適用します：
++
+[source, console]
+----
+helm upgrade trident-protect -n trident-protect netapp-trident-protect/trident-protect -f sccconfig.yaml --reuse-values
+----
++
+これにより、デフォルト値が `sccconfig.yaml`ファイルで指定された値に置き換えられます。
+
+
+
+
+
+[[configure-additional-trident-protect-helm-chart-settings]]
+== 追加のTrident Protectヘルムチャート設定を構成する
+
+AutoSupport 設定、名前空間フィルタリング、および OpenShift Webhook 証明書管理をカスタマイズして、特定の要件を満たすことができます。次の表に、使用可能な設定パラメータを示します：
+
+|===
+| パラメータ | タイプ | 概要 
+
+
+| autoSupport.proxy | string | NetApp AutoSupport接続のプロキシURLを設定します。これを使用して、プロキシ サーバ経由でサポートバンドルのアップロードをルーティングします。例： `http://my.proxy.url`。 
+
+
+| autoSupport.insecure | ブーリアン |  `true`に設定すると、AutoSupportプロキシ接続のTLS検証をスキップします。安全でないプロキシ接続にのみ使用してください。（デフォルト： `false`） 
+
+
+| autoSupport.enabled | ブーリアン | Trident Protect AutoSupportバンドルの日次アップロードを有効または無効にします。 `false`に設定すると、スケジュールされた日次アップロードは無効になりますが、サポート バンドルを手動で生成することはできます。（デフォルト： `true`） 
+
+
+| restoreSkipNamespaceAnnotations | string | バックアップおよびリストア処理から除外するネームスペースアノテーションのカンマ区切りリスト。アノテーションに基づいてネームスペースをフィルタリングできます。 
+
+
+| restoreSkipNamespaceLabels | string | バックアップおよび復元操作から除外する名前空間ラベルのコンマ区切りリスト。ラベルに基づいて名前空間をフィルタリングできます。 
+
+
+| useOpenshiftServiceCA | ブーリアン | OpenShiftのネイティブ Service CA Operator との統合を有効にし、Trident Protect アドミッション Webhook の TLS 証明書の自動作成と挿入を行います。 `true`に設定すると、Service CA Operator が Webhook TLS 証明書を自動的に管理します。OpenShift クラスターでのみ使用してください。（デフォルト： `false`） 
+|===
+これらのオプションは、YAML 構成ファイルまたはコマンドライン フラグを使用して設定できます：
+
+[role="tabbed-block"]
+====
+.YAMLファイルを使用する
+--
+.手順
+. 設定ファイルを作成し、 `values.yaml`という名前を付けます。
+. 作成したファイルに、カスタマイズする設定オプションを追加します。
++
+[source, console]
+----
+autoSupport:
+  enabled: false
+  proxy: http://my.proxy.url
+  insecure: true
+restoreSkipNamespaceAnnotations: "annotation1,annotation2"
+restoreSkipNamespaceLabels: "label1,label2"
+useOpenshiftServiceCA: true
+----
+.  `values.yaml`ファイルに正しい値を入力したら、構成ファイルを適用します：
++
+[source, console]
+----
+helm upgrade trident-protect -n trident-protect netapp-trident-protect/trident-protect -f values.yaml --reuse-values
+----
+
+
+--
+.CLI フラグを使用する
+--
+.手順
+.  `--set`フラグを指定して次のコマンドを使用し、個々のパラメータを指定します。
++
+[source, console]
+----
+helm upgrade trident-protect -n trident-protect netapp-trident-protect/trident-protect \
+  --set autoSupport.enabled=false \
+  --set autoSupport.proxy=http://my.proxy.url \
+  --set-string restoreSkipNamespaceAnnotations="{annotation1,annotation2}" \
+  --set-string restoreSkipNamespaceLabels="{label1,label2}" \
+  --set useOpenshiftServiceCA=true \
+  --reuse-values
+----
+
+
+--
+====
+
+
+[[restrict-trident-protect-pods-to-specific-nodes]]
+== 特定のノードへのTrident Protectポッドの制限
+
+Kubernetes の nodeSelector ノード選択制約を使用して、ノードラベルに基づいて Trident Protect ポッドを実行できるノードを制御できます。デフォルトでは、Trident Protect は Linux を実行しているノードに制限されます。ニーズに応じてこれらの制約をさらにカスタマイズできます。
+
+.手順
+.  `nodeSelectorConfig.yaml`という名前のファイルを作成します。
+. nodeSelectorオプションをファイルに追加し、環境のニーズに応じて制限するノード ラベルを追加または変更するようにファイルを修正します。たとえば、次のファイルにはデフォルトの OS 制限が含まれていますが、特定の地域とアプリ名もターゲットにしています：
++
+[source, yaml]
+----
+nodeSelector:
+  kubernetes.io/os: linux
+  region: us-west
+  app.kubernetes.io/name: mysql
+----
+.  `nodeSelectorConfig.yaml`ファイルから値を適用します：
++
+[source, console]
+----
+helm upgrade trident-protect -n trident-protect netapp-trident-protect/trident-protect -f nodeSelectorConfig.yaml --reuse-values
+----
++
+これにより、デフォルトの制限が、 `nodeSelectorConfig.yaml`ファイルで指定した制限に置き換えられます。
+
+

@@ -1,0 +1,50 @@
+= 
+:allow-uri-read: 
+
+
+. （オプション）アプリケーションの特定のリソースのみを選択して復元する必要がある場合は、特定のラベルが付いたリソースを含めるか除外するかを指定するフィルタリングを追加します。
++
+
+NOTE: Trident Protect は、選択したリソースとの関係に基づいて、一部のリソースを自動的に選択します。例えば、永続ボリューム要求リソースを選択し、それに関連付けられたポッドがある場合、Trident Protect は、関連付けられたポッドも復元します。
+
++
+** *resourceFilter.resourceSelectionCriteria*：（フィルタリングに必須） `Include`または `Exclude`を使用して、resourceMatchersで定義されたリソースを含めるか除外します。以下のresourceMatchersパラメータを追加して、含めるまたは除外するリソースを定義します：
++
+*** *resourceFilter.resourceMatchers*：resourceMatcherオブジェクトの配列。この配列に複数の要素を定義した場合、それらはOR演算で一致し、各要素内のフィールド（group、kind、version）はAND演算で一致します。
++
+**** *resourceMatchers[].group*：（_オプション_）フィルタリングするリソースのグループ。
+**** *resourceMatchers[].kind*：（_オプション_）フィルタリングするリソースの種類。
+**** *resourceMatchers[].version*：（_オプション_）フィルタリングするリソースのバージョン。
+**** *resourceMatchers[].names*：（_オプション_）フィルタリングするリソースの Kubernetes metadata.name フィールド内の名前。
+**** *resourceMatchers[].namespaces*：（_オプション_）フィルタリングするリソースの Kubernetes metadata.name フィールド内の名前空間。
+**** *resourceMatchers[].labelSelectors*：（_オプション_） https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors["Kubernetesドキュメント"^]で定義されているリソースのKubernetesメタデータ.nameフィールドのラベルセレクタ文字列。例： `"trident.netapp.io/os=linux"`
++
+次に例を示します。
+
++
+[source, yaml]
+----
+spec:
+  resourceFilter:
+    resourceSelectionCriteria: "Include"
+    resourceMatchers:
+      - group: my-resource-group-1
+        kind: my-resource-kind-1
+        version: my-resource-version-1
+        names: ["my-resource-names"]
+        namespaces: ["my-resource-namespaces"]
+        labelSelectors: ["trident.netapp.io/os=linux"]
+      - group: my-resource-group-2
+        kind: my-resource-kind-2
+        version: my-resource-version-2
+        names: ["my-resource-names"]
+        namespaces: ["my-resource-namespaces"]
+        labelSelectors: ["trident.netapp.io/os=linux"]
+----
+
+
+
+
+
+
+

@@ -1,0 +1,34 @@
+---
+sidebar: sidebar 
+permalink: trident-managing-k8s/upgrade-tridentctl.html 
+keywords: upgrade, trident, methods, operator, tridentctl, helm 
+summary: '既存のTridentインストールは `tridentctl`を使用して簡単にアップグレードできます。' 
+---
+= tridentctlを使用したTridentのアップグレード
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+既存のTridentインストールは `tridentctl`を使用して簡単にアップグレードできます。
+
+.タスク概要
+Trident をアンインストールして再インストールすると、アップグレードとして機能します。Trident をアンインストールしても、Trident デプロイメントで使用される永続ボリューム要求（PVC）と永続ボリューム（PV）は削除されません。すでにプロビジョニングされている PV は、Trident がオフラインの間も引き続き使用可能であり、Trident はオンラインに戻った後、その間に作成されたすべての PVC のボリュームをプロビジョニングします。
+
+.開始する前に
+link:upgrade-trident.html#step-3-select-an-upgrade-method["アップグレード方法を選択"]を使用してアップグレードする前に `tridentctl`を確認してください。
+
+.手順
+.  `tridentctl`でアンインストールコマンドを実行して、CRDと関連オブジェクトを除く、Tridentに関連付けられたすべてのリソースを削除します。
++
+[listing]
+----
+./tridentctl uninstall -n <namespace>
+----
+. Trident を再インストールします。link:../trident-install/kubernetes-deploy-tridentctl.html["tridentctl を使用して Trident をインストールする"]を参照してください。
+
+
+
+IMPORTANT: アップグレードプロセスを中断しないでください。インストーラが完了まで実行されることを確認してください。

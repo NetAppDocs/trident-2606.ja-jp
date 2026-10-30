@@ -1,0 +1,52 @@
+---
+section: trident-protect
+title: Trident Protectでアプリケーションを保護
+entries:
+- title: Trident Protectについて学ぶ
+  url: "/trident-protect/learn-about-trident-protect.html"
+- title: Trident Protectのインストール
+  entries:
+  - title: Trident Protect の要件
+    url: "/trident-protect/trident-protect-requirements.html"
+  - title: Trident Protectのインストール
+    url: "/trident-protect/trident-protect-installation.html"
+  - title: Trident Protect CLI プラグインをインストールします
+    url: "/trident-protect/trident-protect-cli.html"
+  - title: Trident Protectのインストールをカスタマイズする
+    url: "/trident-protect/trident-protect-customize-installation.html"
+- title: Trident Protectの管理
+  entries:
+  - title: 認証とアクセス制御を管理
+    url: "/trident-protect/manage-authorization-access-control.html"
+  - title: Trident Protectリソースを監視
+    url: "/trident-protect/monitor-trident-protect-resources.html"
+  - title: Trident Protect サポートバンドルを生成する
+    url: "/trident-protect/trident-protect-generate-support-bundle.html"
+  - title: Trident Protectのアップグレード
+    url: "/trident-protect/trident-protect-upgrade.html"
+- title: アプリケーションの管理と保護
+  entries:
+  - title: AppVaultオブジェクトを使用してバケットを管理します
+    url: "/trident-protect/trident-protect-appvault-custom-resources.html"
+  - title: 管理用のアプリケーションを定義する
+    url: "/trident-protect/trident-protect-manage-applications.html"
+  - title: アプリケーションを保護する
+    url: "/trident-protect/trident-protect-protect-apps.html"
+  - title: アプリケーションをリストアする
+    entries:
+    - title: Trident Protectを使用してアプリケーションを復元する
+      url: "/trident-protect/trident-protect-restore-apps.html"
+    - title: 詳細リストア設定を使用する
+      url: "/trident-protect/trident-protect-restore-settings.html"
+    - title: リストア中にリソースを変更する
+      url: "/trident-protect/trident-protect-resource-transformations.html"
+  - title: NetApp SnapMirrorを使用してアプリケーションをレプリケート
+    url: "/trident-protect/trident-protect-use-snapmirror-replication.html"
+  - title: アプリケーションの移行
+    url: "/trident-protect/trident-protect-migrate-apps.html"
+  - title: KubeVirt仮想マシンを保護する
+    url: "/trident-protect/trident-protect-kubevirt-vms.html"
+  - title: Trident Protectで実行フックを管理する
+    url: "/trident-protect/trident-protect-use-execution-hooks.html"
+- title: Trident Protectをアンインストールする
+  url: "/trident-protect/trident-protect-uninstall.html"

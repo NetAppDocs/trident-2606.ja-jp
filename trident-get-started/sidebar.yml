@@ -1,0 +1,24 @@
+---
+section: trident-get-started
+title: はじめに
+entries:
+- title: Tridentの詳細
+  entries:
+  - title: Tridentの概要
+    url: "/trident-get-started/intro.html"
+  - title: Tridentアーキテクチャ
+    url: "/trident-get-started/architecture.html"
+  - title: 概念
+    entries:
+    - title: プロビジョニング
+      url: "/trident-concepts/provisioning.html"
+    - title: ボリュームスナップショット
+      url: "/trident-concepts/snapshots.html"
+    - title: 仮想プール
+      url: "/trident-concepts/virtual-storage-pool.html"
+    - title: ボリュームアクセスグループ
+      url: "/trident-concepts/vol-access-groups.html"
+- title: クイック スタート
+  url: "/trident-get-started/quickstart.html"
+- title: 要件
+  url: "/trident-get-started/requirements.html"

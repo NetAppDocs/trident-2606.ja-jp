@@ -1,0 +1,28 @@
+---
+sidebar: sidebar 
+permalink: trident-use/vol-operations.html 
+keywords: snapshots, volumes, csi topology, storage classes, pv, pvc, persistent volumes, persistent volume claims, backends, expand volumes, import volumes 
+summary: Tridentは、ボリュームを管理するためのさまざまな機能を提供します。Tridentがボリュームに対して提供する機能について学習します。 
+---
+= Tridentのボリューム操作を実行する
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentがボリュムの管理のために提供する機能について学習します。
+
+
+
+[[managing-volumes]]
+== ボリュームの管理
+
+Tridentでボリュームを管理する方法については、以下を参照してください。
+
+* link:csi-topology.html["CSI トポロジを使用する"^]
+* link:vol-snapshots.html["スナップショットの操作"^]
+* link:vol-expansion.html["ボリュームを拡張する"^]
+* link:vol-import.html["ボリュームをインポート"^]
+

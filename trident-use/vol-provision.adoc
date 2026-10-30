@@ -1,0 +1,169 @@
+---
+sidebar: sidebar 
+permalink: trident-use/vol-provision.html 
+keywords: volumes, pvc, pv, persistentvolume, persistentvolumeclaim, mount, pod, provision 
+summary: PersistentVolume（PV）とPersistentVolumeClaim（PVC）を作成します。これらは、設定された Kubernetes StorageClassを使用して PV へのアクセスを要求します。その後、PVをポッドにマウントできます。 
+---
+= Tridentボリュームをプロビジョニングする
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+設定済みのKubernetes StorageClass を使用して、PVへのアクセスを要求する PersistentVolumeClaim（PVC）を作成します。その後、PVをポッドにマウントできます。
+
+
+
+[[overview]]
+== 概要
+
+A https://kubernetes.io/docs/concepts/storage/persistent-volumes["_PersistentVolumeClaim_"^]（PVC）は、クラスタ上のPersistentVolumeへのアクセス要求です。
+
+PVC は、特定のサイズまたはアクセス モードのストレージを要求するように構成できます。関連するStorageClassを使用して、クラスタ管理者は、PersistentVolumeのサイズとアクセス モード以外にも、パフォーマンスやサービス レベルなどを制御できます。
+
+PVC を作成したら、ボリュームをポッドにマウントできます。
+
+
+
+[[create-the-pvc]]
+== PVC を作成する
+
+.手順
+. PVC を作成します。
++
+[listing]
+----
+kubectl create -f pvc.yaml
+----
+. PVC ステータスを確認します。
++
+[listing]
+----
+kubectl get pvc
+----
+
+
+[listing]
+----
+NAME        STATUS  VOLUME     CAPACITY   ACCESS MODES  STORAGECLASS AGE
+pvc-storage Bound   pv-name    1Gi        RWO                  5m
+----
+. ボリュームをポッドにマウントします。
++
+[listing]
+----
+kubectl create -f pv-pod.yaml
+----
++
+
+NOTE: 進捗状況は `kubectl get pod --watch`で確認できます。
+
+. ボリュームが `/my/mount/path`にマウントされていることを確認します。
++
+[listing]
+----
+kubectl exec -it task-pv-pod -- df -h /my/mount/path
+----
+. これでPodを削除できます。Podアプリケーションは存在しなくなりますが、ボリュームは残ります。
++
+[listing]
+----
+kubectl delete pod pv-pod
+----
+
+
+
+
+[[sample-manifests]]
+=== サンプルマニフェスト
+
+.PersistentVolumeClaim サンプルマニフェスト
+[%collapsible]
+====
+これらの例は、基本的な PVC 構成オプションを示しています。
+
+.RWO アクセス付き PVC
+この例では、RWOアクセスを持つ基本的なPVCが、 `basic-csi`という名前のStorageClassに関連付けられています。
+
+[source, yaml]
+----
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pvc-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: basic-csi
+----
+.NVMe/TCP を使用した PVC
+この例では、RWOアクセスを持つNVMe/TCPの基本的なPVCが、StorageClassという名前 `protection-gold`に関連付けられています。
+
+[source, yaml]
+----
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+name: pvc-san-nvme
+spec:
+accessModes:
+  - ReadWriteOnce
+resources:
+  requests:
+    storage: 300Mi
+storageClassName: protection-gold
+----
+====
+.Podマニフェストのサンプル
+[%collapsible]
+====
+これらの例は、PVCをポッドに接続するための基本的な設定を示しています。
+
+.基本設定
+[source, yaml]
+----
+kind: Pod
+apiVersion: v1
+metadata:
+  name: pv-pod
+spec:
+  volumes:
+    - name: storage
+      persistentVolumeClaim:
+       claimName: pvc-storage
+  containers:
+    - name: pv-container
+      image: nginx
+      ports:
+        - containerPort: 80
+          name: "http-server"
+      volumeMounts:
+        - mountPath: "/my/mount/path"
+          name: storage
+----
+.基本的なNVMe/TCP構成
+[source, yaml]
+----
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-nginx
+spec:
+  volumes:
+    - name: basic-pvc
+      persistentVolumeClaim:
+        claimName: pvc-san-nvme
+  containers:
+    - name: task-pv-container
+      image: nginx
+      volumeMounts:
+        - mountPath: "/my/mount/path"
+          name: basic-pvc
+----
+====
+link:../trident-reference/objects.html["KubernetesとTridentオブジェクト"]を参照して、ストレージクラスが `PersistentVolumeClaim`とどのように相互作用するか、および Trident がボリュームをプロビジョニングする方法を制御するパラメータの詳細を確認してください。

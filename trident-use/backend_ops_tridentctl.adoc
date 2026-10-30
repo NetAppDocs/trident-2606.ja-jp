@@ -1,0 +1,111 @@
+---
+sidebar: sidebar 
+permalink: trident-use/backend_ops_tridentctl.html 
+keywords: backends, storage system, anf, element, hci, solidfire, ontap, aff, fas, ontap select, configure backends, tridentctl, create backends, delete backends, view backends, update backends 
+summary: ' `tridentctl`を使用してバックエンド管理操作を実行する方法について説明します。' 
+---
+= tridentctl を使用した Trident バックエンドの管理
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+ `tridentctl`を使用してバックエンド管理操作を実行する方法について説明します。
+
+
+
+[[create-a-backend]]
+== バックエンドを作成する
+
+link:backends.html["バックエンド設定ファイル"^]を作成したら、次のコマンドを実行します：
+
+[listing]
+----
+tridentctl create backend -f <backend-file> -n trident
+----
+バックエンドの作成に失敗した場合は、バックエンドの構成に問題があります。次のコマンドを実行すると、ログを表示して原因を特定できます：
+
+[listing]
+----
+tridentctl logs -n trident
+----
+設定ファイルの問題を特定して修正したら、 `create`コマンドを再度実行します。
+
+
+
+[[delete-a-backend]]
+== バックエンドを削除する
+
+バックエンドをTridentから削除するには、次の操作を行います：
+
+. バックエンド名を取得します：
++
+[listing]
+----
+tridentctl get backend -n trident
+----
+. バックエンドを削除します：
++
+[listing]
+----
+tridentctl delete backend <backend-name> -n trident
+----
+
+
+
+NOTE: Tridentがこのバックエンドからプロビジョニングしたボリュームとスナップショットがまだ存在する場合、バックエンドを削除すると、新しいボリュームをプロビジョニングできなくなります。バックエンドは「削除中」の状態で存在し続けます。
+
+
+
+[[view-the-existing-backends]]
+== 既存のバックエンドを表示する
+
+Tridentが認識しているバックエンドを表示するには、次の操作を行います。
+
+* 概要を取得するには、次のコマンドを実行します：
++
+[listing]
+----
+tridentctl get backend -n trident
+----
+* すべての詳細を取得するには、次のコマンドを実行します：
++
+[listing]
+----
+tridentctl get backend -o json -n trident
+----
+
+
+
+
+[[update-a-backend]]
+== バックエンドを更新する
+
+新しいバックエンド構成ファイルを作成したら、次のコマンドを実行します：
+
+[listing]
+----
+tridentctl update backend <backend-name> -f <backend-file> -n trident
+----
+バックエンドの更新が失敗した場合は、バックエンドの構成に問題があるか、無効な更新を試行しました。次のコマンドを実行すると、ログを表示して原因を特定できます：
+
+[listing]
+----
+tridentctl logs -n trident
+----
+設定ファイルの問題を特定して修正したら、 `update`コマンドを再度実行します。
+
+
+
+[[identify-the-storage-classes-that-use-a-backend]]
+== バックエンドを使用するストレージクラスを特定する
+
+これは、 `tridentctl`がバックエンドオブジェクトに対して出力するJSONで回答できる質問の種類の例です。これは `jq`ユーティリティを使用しており、インストールする必要があります。
+
+[listing]
+----
+tridentctl get backend -o json | jq '[.items[] | {backend: .name, storageClasses: [.storage[].storageClasses]|unique}]'
+----
+これは、 `TridentBackendConfig`を使用して作成されたバックエンドにも適用されます。

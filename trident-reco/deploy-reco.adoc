@@ -1,0 +1,33 @@
+---
+sidebar: sidebar 
+permalink: trident-reco/deploy-reco.html 
+keywords: deployment, deploy, trident, namespace 
+summary: Tridentを導入する際は、ここに記載されている推奨事項を使用してください。 
+---
+= Trident導入に関する推奨事項
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentを導入する際は、ここに記載されている推奨事項を使用してください。
+
+
+
+[[deploy-to-a-dedicated-namespace]]
+== 専用の名前空間にデプロイする
+
+https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/["ネームスペース"^]異なるアプリケーション間の管理上の分離を提供し、リソース共有の障壁となります。たとえば、ある名前空間のPVCを別の名前空間で使用することはできません。TridentはKubernetesクラスター内のすべての名前空間にPVリソースを提供し、その結果、昇格された権限を持つサービスアカウントを活用します。
+
+さらに、Tridentポッドへのアクセスにより、ユーザーがストレージシステムの資格情報やその他の機密情報にアクセスできるようになる可能性があります。アプリケーションユーザーと管理アプリケーションがTridentオブジェクト定義またはポッド自体にアクセスできないようにすることが重要です。
+
+
+
+[[use-quotas-and-range-limits-to-control-storage-consumption]]
+== クォータと範囲制限を使用してストレージ消費を制御
+
+Kubernetesには2つの機能があり、これらを組み合わせることで、アプリケーションによるリソース消費を制限する強力なメカニズムが提供されます。 https://kubernetes.io/docs/concepts/policy/resource-quotas/#storage-resource-quota["ストレージクォータメカニズム"^]により、管理者は、グローバルおよびストレージクラス固有の容量とオブジェクト数の消費制限をネームスペースごとに実装できます。さらに、 https://kubernetes.io/docs/tasks/administer-cluster/limit-storage-consumption/#limitrange-to-limit-requests-for-storage["範囲制限"^]を使用することで、リクエストがプロビジョナーに転送される前に、PVCリクエストが最小値と最大値の範囲内であることを確認します。
+
+これらの値は名前空間ごとに定義されます。つまり、各名前空間には、そのリソース要件に適合する値が定義されている必要があります。詳細については、こちらをご覧ください https://netapp.io/2017/06/09/self-provisioning-storage-kubernetes-without-worry["割り当てを活用する方法"^]。

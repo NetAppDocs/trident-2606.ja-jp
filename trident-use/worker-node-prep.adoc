@@ -1,0 +1,535 @@
+---
+sidebar: sidebar 
+permalink: trident-use/worker-node-prep.html 
+keywords: storage class, manage storage class, storage classes, kubernetes storage classes, worker node, nfs, iscsi, kubernetes clusters, self-healing, healing, nvme, tcp 
+summary: Kubernetes クラスター内のすべてのワーカーノードは、ポッド用にプロビジョニングしたボリュームをマウントできる必要があります。バックエンドの 1 つに ontap-nas、ontap-nas-economy、ontap-nas-flexgroup ドライバーを使用している場合は、ワーカーノードに NFS ツールが必要です。それ以外の場合は、iSCSI ツールが必要です。 
+---
+= Tridentワーカーノードを準備する
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Kubernetes クラスター内のすべてのワーカーノードは、ポッド用にプロビジョニングしたボリュームをマウントできる必要があります。ワーカーノードを準備するには、ドライバーの選択に基づいて、NFS、iSCSI、NVMe/TCP、または FC ツールをインストールする必要があります。
+
+
+
+[[selecting-the-right-tools]]
+== 適切なツールの選択
+
+複数のドライバーを組み合わせて使用している場合は、ドライバーに必要なすべてのツールをインストールする必要があります。Red Hat Enterprise Linux CoreOS（RHCOS）の最新バージョンには、これらのツールがデフォルトでインストールされています。
+
+.NFSツール
+link:https://docs.netapp.com/us-en/trident/trident-use/worker-node-prep.html#nfs-volumes["NFSツールをインストールする"]使用している場合： `ontap-nas`、 `ontap-nas-economy`、 `ontap-nas-flexgroup`、または `azure-netapp-files`。
+
+.iSCSIツール
+link:https://docs.netapp.com/us-en/trident/trident-use/worker-node-prep.html#install-the-iscsi-tools["iSCSIツールをインストールする"]使用している場合： `ontap-san`、 `ontap-san-economy`、 `solidfire-san`。
+
+.NVMeツール
+link:https://docs.netapp.com/us-en/trident/trident-use/worker-node-prep.html#nvmetcp-volumes["NVMeツールをインストールする"]Nonvolatile Memory Express（NVMe）over TCP（NVMe/TCP）プロトコルに `ontap-san`を使用している場合。
+
+
+NOTE: NetAppでは、NVMe/TCPにはONTAP 9.12以降を推奨しています。
+
+.SCSI over FCツール
+FC および FC-NVMe SAN ホストの設定の詳細については、link:https://docs.netapp.com/us-en/ontap/san-config/configure-fc-nvme-hosts-ha-pairs-reference.html["FCおよびFC-NVMe SANホストの構成方法"]を参照してください。
+
+link:https://docs.netapp.com/us-en/trident/trident-use/worker-node-prep.html#install-the-fc-tools["FCツールをインストールする"] sanType を `ontap-san`（SCSI over FC）で使用している場合 `fcp`。
+
+*考慮すべき点*： * SCSI over FCはOpenShiftおよびKubeVirt環境でサポートされています。* SCSI over FCはDockerではサポートされていません。* iSCSI自己修復はSCSI over FCには適用されません。
+
+.SMBツール
+link:https://docs.netapp.com/us-en/trident/trident-use/worker-node-prep.html#prepare-to-provision-smb-volumes["SMB ボリュームのプロビジョニングの準備"]使用している場合： `ontap-nas`SMBボリュームをプロビジョニングします。
+
+
+
+[[node-service-discovery]]
+== ノードサービス検出
+
+Tridentは、ノードがiSCSIまたはNFSサービスを実行できるかどうかを自動的に検出しようとします。
+
+
+NOTE: ノード サービス検出では検出されたサービスを識別しますが、サービスが適切に構成されていることは保証されません。逆に、検出されたサービスが存在しない場合でも、ボリュームのマウントが失敗することは保証されません。
+
+.イベントを確認する
+Tridentは、検出されたサービスを識別するためにノードのイベントを作成します。これらのイベントを確認するには、次のコマンドを実行します：
+
+[listing]
+----
+kubectl get event -A --field-selector involvedObject.name=<Kubernetes node name>
+----
+.検出されたサービスを確認する
+Tridentは、TridentノードCRの各ノードで有効になっているサービスを識別します。検出されたサービスを表示するには、次のコマンドを実行します：
+
+[listing]
+----
+tridentctl get node -o wide -n <Trident namespace>
+----
+
+
+[[nfs-volumes]]
+== NFSボリューム
+
+オペレーティングシステムのコマンドを使用してNFSツールをインストールします。NFSサービスがブート時に起動されることを確認します。
+
+[role="tabbed-block"]
+====
+.RHEL 8以降
+--
+[listing]
+----
+sudo yum install -y nfs-utils
+----
+--
+.Ubuntu
+--
+[listing]
+----
+sudo apt-get install -y nfs-common
+----
+--
+====
+
+WARNING: ボリュームをコンテナに接続するときに障害が発生しないように、NFSツールをインストールした後、ワーカーノードを再起動します。
+
+
+
+[[iscsi-volumes]]
+== iSCSIボリューム
+
+Tridentは、iSCSIセッションを自動的に確立し、LUNをスキャンし、マルチパスデバイスを検出し、フォーマットして、ポッドにマウントできます。
+
+
+
+[[iscsi-self-healing-capabilities]]
+=== iSCSI自己修復機能
+
+ONTAPシステムの場合、TridentはiSCSI自己修復を5分ごとに実行します：
+
+. 必要な iSCSI セッション状態と現在の iSCSI セッション状態を*識別*します。
+. 必要な修復を特定するには、希望する状態と現在の状態を*比較*します。Tridentは修復の優先順位と修復を先取りするタイミングを決定します。
+. 現在のiSCSIセッション状態を目的のiSCSIセッション状態に戻すために必要な*修復を実行*します。
+
+
+
+NOTE: 自己修復アクティビティのログは、それぞれのDaemonsetポッド上の `trident-main`コンテナにあります。ログを表示するには、Tridentのインストール時に `debug`を「true」に設定しておく必要があります。
+
+Trident iSCSI自己修復機能により、次のことを防ぐことができます。
+
+* ネットワーク接続の問題が発生した後に発生する可能性のある、古いまたは異常な iSCSI セッション。古いセッションの場合、Trident はポータルとの接続を再確立するためにログアウトする前に 7 分間待機します。
++
+
+NOTE: たとえば、ストレージコントローラ上でCHAPシークレットがローテーションされ、ネットワークの接続が失われた場合、古い（_stale_）CHAPシークレットが残る可能性があります。自己修復はこれを認識し、セッションを自動的に再確立して更新されたCHAPシークレットを適用します。
+
+* iSCSIセッションが見つかりません
+* 不足しているLUN
+
+
+*Tridentをアップグレードする前に考慮すべき点*
+
+* ノードごとのigroup（23.04以降で導入）のみが使用されている場合、iSCSI自己修復はSCSIバス内のすべてのデバイスに対してSCSI再スキャンを開始します。
+* バックエンドスコープのigroup（23.04以降は非推奨）のみが使用されている場合、iSCSI自己修復はSCSIバス内の正確なLUN IDのSCSI再スキャンを開始します。
+* ノードごとのigroupとバックエンドスコープのigroupが混在して使用されている場合、iSCSI自己修復はSCSIバス内の正確なLUN IDのSCSI再スキャンを開始します。
+
+
+
+
+[[install-the-iscsi-tools]]
+=== iSCSIツールをインストールする
+
+オペレーティングシステムのコマンドを使用してiSCSIツールをインストールします。
+
+.開始する前に
+* Kubernetes クラスター内の各ノードには一意の IQN が必要です。*これは必須の前提条件です*。
+* RHCOSバージョン4.5以降、またはその他のRHEL互換Linuxディストリビューションを `solidfire-san`ドライバおよびElement OS 12.5以前とともに使用している場合は、 `/etc/iscsi/iscsid.conf`でCHAP認証アルゴリズムがMD5に設定されていることを確認してください。安全なFIPS準拠のCHAPアルゴリズムSHA1、SHA-256、およびSHA3-256は、Element 12.7で利用できます。
++
+[listing]
+----
+sudo sed -i 's/^\(node.session.auth.chap_algs\).*/\1 = MD5/' /etc/iscsi/iscsid.conf
+----
+* iSCSI PVを使用するRHEL/Red Hat Enterprise Linux CoreOS（RHCOS）で動作するワーカーノードを利用する場合、インラインスペースの再利用を実行するために、 `discard` StorageClass内でmountOptionを指定してください。 https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/managing_file_systems/discarding-unused-blocks_managing-file-systems["Red Hat ドキュメント"^]を参照してください。
+* 最新バージョンの `multipath-tools`にアップグレードしたことを確認してください。
+
+
+[role="tabbed-block"]
+====
+.RHEL 8以降
+--
+. 次のシステムパッケージをインストールします：
++
+[listing]
+----
+sudo yum install -y lsscsi iscsi-initiator-utils device-mapper-multipath
+----
+. iscsi-initiator-utils のバージョンが 6.2.0.874-2.el7 以降であることを確認します：
++
+[listing]
+----
+rpm -q iscsi-initiator-utils
+----
+. スキャンを手動に設定します：
++
+[listing]
+----
+sudo sed -i 's/^\(node.session.scan\).*/\1 = manual/' /etc/iscsi/iscsid.conf
+----
+. マルチパスを有効にする：
++
+[listing]
+----
+sudo mpathconf --enable --with_multipathd y --find_multipaths n
+----
++
+
+NOTE:  `/etc/multipath.conf`に `find_multipaths no`が `defaults`の下に含まれていることを確認します。
+
+.  `iscsid`と `multipathd`が実行されていることを確認します：
++
+[listing]
+----
+sudo systemctl enable --now iscsid multipathd
+----
+. 有効化して起動 `iscsi`：
++
+[listing]
+----
+sudo systemctl enable --now iscsi
+----
+
+
+--
+.Ubuntu
+--
+. 次のシステムパッケージをインストールします：
++
+[listing]
+----
+sudo apt-get install -y open-iscsi lsscsi sg3-utils multipath-tools scsitools
+----
+. open-iscsi のバージョンが 2.0.874-5ubuntu2.10 以降（bionic の場合）または 2.0.874-7.1ubuntu6.1 以降（focal の場合）であることを確認します：
++
+[listing]
+----
+dpkg -l open-iscsi
+----
+. スキャンを手動に設定します：
++
+[listing]
+----
+sudo sed -i 's/^\(node.session.scan\).*/\1 = manual/' /etc/iscsi/iscsid.conf
+----
+. マルチパスを有効にする：
++
+[listing]
+----
+sudo tee /etc/multipath.conf <<-EOF
+defaults {
+    user_friendly_names yes
+    find_multipaths no
+}
+EOF
+sudo systemctl enable --now multipath-tools.service
+sudo service multipath-tools restart
+----
++
+
+NOTE:  `/etc/multipath.conf`に `find_multipaths no`が `defaults`の下に含まれていることを確認します。
+
+.  `open-iscsi`と `multipath-tools`が有効になっていて実行中であることを確認します：
++
+[listing]
+----
+sudo systemctl status multipath-tools
+sudo systemctl enable --now open-iscsi.service
+sudo systemctl status open-iscsi
+----
++
+
+NOTE: Ubuntu 18.04の場合、iSCSIデーモンを起動する前に `iscsiadm`でターゲットポートを検出する必要があります。iSCSIデーモンが起動するためです。  `open-iscsi`または、 `iscsi`サービスを修正して `iscsid`を自動的に起動することもできます。
+
+
+
+--
+====
+
+
+[[configure-or-disable-iscsi-self-healing]]
+=== iSCSI self-healingを設定または無効にする
+
+以下のTrident iSCSI自己修復設定を構成して、古いセッションを修正できます：
+
+* *iSCSI自己修復間隔*：iSCSI自己修復が呼び出される頻度を決定します（デフォルト：5分）。小さい数値を設定すると実行頻度が高くなり、大きい数値を設定すると実行頻度が低くなるように設定できます。
+
+
+[NOTE]
+====
+iSCSI自己修復間隔を0に設定すると、iSCSI自己修復が完全に停止します。iSCSI自己修復を無効にすることは推奨しません。iSCSI自己修復が意図したとおりに動作していない特定のシナリオ、またはデバッグ目的の場合にのみ無効にする必要があります。
+
+====
+* *iSCSI自己修復待機時間*：iSCSI自己修復が異常なセッションからログアウトして再度ログインを試行するまでの待機時間を決定します（デフォルト：7分）。大きい数値に設定すると、正常でないと判断されたセッションはログアウトされるまでの待機時間が長くなり、その後再度ログインが試行されます。また、小さい数値に設定すると、ログアウトしてから再度ログインするまでの時間が短くなります。
+
+
+[role="tabbed-block"]
+====
+.Helm
+--
+iSCSI自己修復設定を構成または変更するには、helmのインストールまたはhelmの更新中に `iscsiSelfHealingInterval`および `iscsiSelfHealingWaitTime`パラメータを渡します。
+
+次の例では、iSCSI自己修復間隔を3分にし、自己修復待ち時間を6分にします：
+
+[listing]
+----
+helm install trident trident-operator-100.2606.0.tgz --set iscsiSelfHealingInterval=3m0s --set iscsiSelfHealingWaitTime=6m0s -n trident
+----
+--
+.tridentctl
+--
+iSCSI自己修復設定を構成または変更するには、tridentctlのインストールまたは更新中に `iscsi-self-healing-interval`および `iscsi-self-healing-wait-time`パラメータを渡します。
+
+次の例では、iSCSI自己修復間隔を3分にし、自己修復待ち時間を6分にします：
+
+[listing]
+----
+tridentctl install --iscsi-self-healing-interval=3m0s --iscsi-self-healing-wait-time=6m0s -n trident
+----
+--
+====
+
+
+[[nvmetcp-volumes]]
+== NVMe/TCPボリューム
+
+オペレーティングシステムのコマンドを使用してNVMeツールをインストールします。
+
+[NOTE]
+====
+* NVMe には RHEL 9 以降が必要です。
+* Kubernetes ノードのカーネルバージョンが古すぎる場合、またはカーネルバージョンで NVMe パッケージが利用できない場合は、ノードのカーネルバージョンを NVMe パッケージを含むバージョンに更新する必要がある場合があります。
+
+
+====
+[role="tabbed-block"]
+====
+.RHEL 9
+--
+[listing]
+----
+sudo yum install nvme-cli
+sudo yum install linux-modules-extra-$(uname -r)
+sudo modprobe nvme-tcp
+----
+--
+.Ubuntu
+--
+[listing]
+----
+sudo apt install nvme-cli
+sudo apt -y install linux-modules-extra-$(uname -r)
+sudo modprobe nvme-tcp
+----
+--
+====
+
+
+[[verify-installation]]
+=== インストールの検証
+
+インストール後、次のコマンドを使用して、Kubernetesクラスタ内の各ノードに一意のNQNがあることを確認します：
+
+[listing]
+----
+cat /etc/nvme/hostnqn
+----
+
+WARNING: Tridentは、パスがダウンした場合にNVMeがパスを放棄しないようにするために `ctrl_device_tmo`の値を変更します。この設定は変更しないでください。
+
+
+
+[[scsi-over-fc-volumes]]
+== SCSI over FCボリューム
+
+Tridentでファイバチャネル（FC）プロトコルを使用して、ONTAPシステム上のストレージリソースをプロビジョニングおよび管理できるようになりました。
+
+
+
+[[prerequisites]]
+=== 前提条件
+
+FC に必要なネットワークとノードの設定を構成します。
+
+
+
+==== ネットワーク設定
+
+. ターゲットインターフェイスのWWPNを取得します。詳細については、 https://docs.netapp.com/us-en/ontap-cli//network-interface-show.html["network interface show"^]を参照してください。
+. イニシエーター（ホスト）上のインターフェースのWWPNを取得します。
++
+対応するホストオペレーティングシステムユーティリティを参照してください。
+
+. ホストとターゲットのWWPNを使用してFCスイッチのゾーニングを構成します。
++
+詳細については、それぞれのスイッチベンダーのドキュメントを参照してください。
+
++
+詳細については、次のONTAPドキュメントを参照してください：
+
++
+** https://docs.netapp.com/us-en/ontap/san-config/fibre-channel-fcoe-zoning-concept.html["Fibre ChannelおよびFCoEのゾーニング - 概要"^]
+** https://docs.netapp.com/us-en/ontap/san-config/configure-fc-nvme-hosts-ha-pairs-reference.html["FCおよびFC-NVMe SANホストの構成方法"^]
+
+
+
+
+
+
+[[install-the-fc-tools]]
+=== FCツールをインストールする
+
+オペレーティングシステムのコマンドを使用してFCツールをインストールします。
+
+* FC PVを使用するRHEL／Red Hat Enterprise Linux CoreOS（RHCOS）上のワーカーノードを利用する場合、インラインスペースリクレームを実行するために、 `discard` StorageClassでmountOptionを指定してください。 https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/managing_file_systems/discarding-unused-blocks_managing-file-systems["Red Hat ドキュメント"^]を参照してください。
+
+
+[role="tabbed-block"]
+====
+.RHEL 8以降
+--
+. 次のシステムパッケージをインストールします：
++
+[listing]
+----
+sudo yum install -y lsscsi device-mapper-multipath
+----
+. マルチパスを有効にする：
++
+[listing]
+----
+sudo mpathconf --enable --with_multipathd y --find_multipaths n
+----
++
+
+NOTE:  `/etc/multipath.conf`に `find_multipaths no`が `defaults`の下に含まれていることを確認します。
+
+.  `multipathd`が実行されていることを確認します：
++
+[listing]
+----
+sudo systemctl enable --now multipathd
+----
+
+
+--
+.Ubuntu
+--
+. 次のシステムパッケージをインストールします：
++
+[listing]
+----
+sudo apt-get install -y lsscsi sg3-utils multipath-tools scsitools
+----
+. マルチパスを有効にする：
++
+[listing]
+----
+sudo tee /etc/multipath.conf <<-EOF
+defaults {
+    user_friendly_names yes
+    find_multipaths no
+}
+EOF
+sudo systemctl enable --now multipath-tools.service
+sudo service multipath-tools restart
+----
++
+
+NOTE:  `/etc/multipath.conf`に `find_multipaths no`が `defaults`の下に含まれていることを確認します。
+
+.  `multipath-tools`が有効になっていて実行中であることを確認します：
++
+[listing]
+----
+sudo systemctl status multipath-tools
+----
+
+
+--
+====
+
+
+[[prepare-to-provision-smb-volumes]]
+== SMB ボリュームのプロビジョニングの準備
+
+ `ontap-nas`ドライバーを使用してSMBボリュームをプロビジョニングできます。
+
+
+WARNING: ONTAP オンプレミスクラスタ用の `ontap-nas-economy` SMB ボリュームを作成するには、SVM で NFS と SMB/CIFS プロトコルの両方を設定する必要があります。これらのプロトコルのいずれかを設定しないと、SMB ボリュームの作成が失敗します。
+
+
+NOTE: `autoExportPolicy` は SMB ボリュームではサポートされません。
+
+.開始する前に
+SMB ボリュームをプロビジョニングする前に、次のものが必要です。
+
+* Linux コントローラー ノードと、Windows Server 2022 を実行する少なくとも 1 つの Windows ワーカー ノードを備えた Kubernetes クラスター。Trident は、 Windows ノード上で実行されているポッドにマウントされた SMB ボリュームのみをサポートします。
+* Active Directory のクレデンシャルを含む少なくとも 1 つの Trident シークレット。シークレットを生成するには `smbcreds`：
++
+[listing]
+----
+kubectl create secret generic smbcreds --from-literal username=user --from-literal password='password'
+----
+* Windows サービスとして構成された CSI プロキシ。 `csi-proxy`を設定するには、Windows 上で実行されている Kubernetes ノード用のlink:https://github.com/kubernetes-csi/csi-proxy["GitHub：CSI Proxy"^]またはlink:https://github.com/Azure/aks-engine/blob/master/docs/topics/csi-proxy-windows.md["GitHub：Windows用CSIプロキシ"^]を参照してください。
+
+
+.手順
+. オンプレミス ONTAP の場合、必要に応じて SMB 共有を作成するか、 Trident に作成させることができます。
++
+
+NOTE: SMB 共有は Amazon FSx for ONTAP に必要です。
+
++
+SMB 管理共有は、link:https://learn.microsoft.com/en-us/troubleshoot/windows-server/system-management-components/what-is-microsoft-management-console["Microsoft管理コンソール"^] 共有フォルダスナップインまたは ONTAP CLI のいずれかを使用して、2 つの方法のいずれかで作成できます。ONTAP CLI を使用して SMB 共有を作成するには：
+
++
+.. 必要に応じて、共有のディレクトリ パス構造を作成します。
++
+ `vserver cifs share create`コマンドは、共有の作成中に -path オプションで指定されたパスをチェックします。指定されたパスが存在しない場合、コマンドは失敗します。
+
+.. 指定された SVM に関連付けられた SMB 共有を作成します：
++
+[listing]
+----
+vserver cifs share create -vserver vserver_name -share-name share_name -path path [-share-properties share_properties,...] [other_attributes] [-comment text]
+----
+.. 共有が作成されたことを確認します：
++
+[listing]
+----
+vserver cifs share show -share-name share_name
+----
++
+
+NOTE: 詳細については、link:https://docs.netapp.com/us-en/ontap/smb-config/create-share-task.html["SMB共有を作成する"^]を参照してください。
+
+
+
+. バックエンドを作成するときは、SMB ボリュームを指定するために以下を構成する必要があります。すべての FSx for ONTAP バックエンドの設定オプションについては、link:trident-fsx-examples.html["FSx for ONTAP 設定オプションと例"]を参照してください。
++
+[cols="1,2,1"]
+|===
+| パラメータ | 概要 | 例 
+
+
+| `smbShare` | 次のいずれかを指定できます：Microsoft Management ConsoleまたはONTAP CLIを使用して作成されたSMB共有の名前、TridentがSMB共有を作成できるようにする名前、またはパラメータを空白のままにしてボリュームへの共通共有アクセスを防止できます。このパラメータは、オンプレミスONTAPではオプションです。このパラメータは、Amazon FSx for ONTAPバックエンドでは必須であり、空白にすることはできません。 | `smb-share` 
+
+
+| `nasType` | * `smb`に設定する必要があります。*nullの場合、デフォルトは `nfs`です。 | `smb` 
+
+
+| `securityStyle` | 新しいボリュームのセキュリティ スタイル。*SMB ボリュームの場合は、 `ntfs`または `mixed`に設定する必要があります。* | `ntfs` または  `mixed` SMB ボリューム用 
+
+
+| `unixPermissions` | 新しいボリュームのモード。*SMB ボリュームの場合は空のままにする必要があります。* | "" 
+|===
+

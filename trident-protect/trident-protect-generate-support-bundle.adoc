@@ -1,0 +1,107 @@
+---
+sidebar: sidebar 
+permalink: trident-protect/trident-protect-generate-support-bundle.html 
+keywords: trident, protect, bundle, support, netapp, custom, resource, file 
+summary: Trident Protectは、管理者がログ、メトリック、管理下のクラスタやアプリに関するトポロジ情報など、NetApp Supportに役立つ情報を含むバンドルを生成できるようにします。インターネットに接続されている場合、カスタムリソース（CR）ファイルを使用して、サポートバンドルをNetApp Support Site（NSS）にアップロードできます。 
+---
+= Trident Protect サポートバンドルを生成する
+:hardbreaks:
+:allow-uri-read: 
+:nofooter: 
+:icons: font
+:linkattrs: 
+:imagesdir: ../media/
+
+
+[role="lead"]
+Trident Protectは、管理者がログ、メトリック、管理下のクラスタやアプリに関するトポロジ情報など、NetApp Supportに役立つ情報を含むバンドルを生成できるようにします。インターネットに接続されている場合、カスタムリソース（CR）ファイルを使用して、サポートバンドルをNetApp Support Site（NSS）にアップロードできます。
+
+[role="tabbed-block"]
+====
+.CR を使用してサポートバンドルを作成する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、名前を付けます（例： `trident-protect-support-bundle.yaml`）。
+. 次の属性を設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.triggerType*：（_必須_）サポート バンドルをすぐに生成するか、スケジュールするかを決定します。スケジュールされたバンドル生成は、UTC の午前 12 時に行われます。有効な値は次のとおりです。
++
+*** スケジュール済み
+*** 手動
+
+
+** *spec.uploadEnabled*：（_オプション_）サポートバンドルの生成後にNetApp Support Siteにアップロードするかどうかを制御します。指定されていない場合、デフォルトは `false`です。有効な値は次のとおりです。
++
+*** true
+*** false （デフォルト）
+
+
+** *spec.dataWindowStart*：（_オプション_）サポート バンドルに含まれるデータのウィンドウの開始日時を指定する RFC 3339 形式の日付文字列。指定しない場合は、デフォルトで 24 時間前になります。指定できる最も早いウィンドウ日付は 7 日前です。
++
+YAMLの例：
+
++
+[source, yaml]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: AutoSupportBundle
+metadata:
+  name: trident-protect-support-bundle
+spec:
+  triggerType: Manual
+  uploadEnabled: true
+  dataWindowStart: 2024-05-05T12:30:00Z
+----
+
+
+.  `trident-protect-support-bundle.yaml`ファイルに正しい値を入力したら、CRを適用します。
++
+[source, console]
+----
+kubectl apply -f trident-protect-support-bundle.yaml -n trident-protect
+----
+
+
+--
+.CLI を使用してサポートバンドルを作成する
+--
+.手順
+. 括弧内の値を環境の情報に置き換えて、サポート バンドルを作成します。 `trigger-type`は、バンドルがすぐに作成されるか、作成時間がスケジュールによって決定されるかを決定します。 `Manual`または `Scheduled`を指定できます。デフォルト設定は `Manual`です。
++
+次に例を示します。
+
++
+[source, console]
+----
+tridentctl-protect create autosupportbundle <my-bundle-name> --trigger-type <trigger-type> -n trident-protect
+----
+
+
+--
+====
+
+
+[[monitor-and-retrieve-the-support-bundle]]
+== サポートバンドルを監視して取得する
+
+いずれかの方法を使用してサポート バンドルを作成した後、その生成の進行状況を監視し、ローカル システムに取得することができます。
+
+.手順
+.  `status.generationState`が `Completed`状態になるまで待ちます。次のコマンドで生成の進行状況を監視できます：
++
+[source, console]
+----
+kubectl get autosupportbundle trident-protect-support-bundle -n trident-protect
+----
+. サポート バンドルをローカル システムに取得します。完了したAutoSupportバンドルからコピー コマンドを取得します：
++
+[source, console]
+----
+kubectl describe autosupportbundle trident-protect-support-bundle -n trident-protect
+----
++
+出力から `kubectl cp`コマンドを見つけて実行し、宛先引数を希望のローカル ディレクトリに置き換えます。
+
+

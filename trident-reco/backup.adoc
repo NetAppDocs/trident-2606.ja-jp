@@ -1,0 +1,136 @@
+---
+sidebar: sidebar 
+permalink: trident-reco/backup.html 
+keywords: data protection, replication, dr, disaster recovery, snapmirror, back up, snapshot, element, volume replication 
+summary: Tridentを使用して作成されたTridentおよびボリュームの保護とリカバリのオプションについて説明します。永続性を必要とするアプリケーションごとに、データ保護およびリカバリ戦略を用意する必要があります。 
+---
+= Tridentデータ保護と災害復旧
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentを使用して作成されたTridentおよびボリュームの保護とリカバリのオプションについて説明します。永続性を必要とするアプリケーションごとに、データ保護およびリカバリ戦略を用意する必要があります。
+
+
+
+[[trident-replication-and-recovery]]
+== Tridentのレプリケーションとリカバリ
+
+災害が発生した場合に備えて、Tridentを復元するためのバックアップを作成できます。
+
+
+
+[[trident-replication]]
+=== Tridentレプリケーション
+
+Trident は Kubernetes CRD を使用して独自の状態を保存および管理し、Kubernetes クラスター etcd を使用してメタデータを保存します。
+
+.手順
+. link:https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/#backing-up-an-etcd-cluster["Kubernetes：etcdクラスタのバックアップ"^]を使用してKubernetesクラスタetcdをバックアップします。
+. バックアップアーティファクトをFlexVolボリュームに配置する
++
+
+NOTE: NetAppでは、FlexVolが存在するSVMをSnapMirror関係で別のSVMに保護することを推奨しています。
+
+
+
+
+
+[[trident-recovery]]
+=== Tridentリカバリ
+
+Kubernetes CRDとKubernetesクラスタetcdスナップショットを使用すると、Tridentをリカバリできます。
+
+.手順
+. デスティネーション SVM から、Kubernetes etcd データファイルと証明書を含むボリュームを、マスターノードとしてセットアップされるホストにマウントします。
+. Kubernetesクラスタに関連する必要な証明書をすべて `/etc/kubernetes/pki`にコピーし、etcdメンバーファイルを `/var/lib/etcd`にコピーします。
+. link:https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/#restoring-an-etcd-cluster["Kubernetes：etcdクラスタのリストア"^]を使用して、etcdバックアップからKubernetesクラスタを復元します。
+. 実行 `kubectl get crd`すべてのTridentカスタムリソースが起動したことを確認し、Tridentオブジェクトを取得してすべてのデータが利用可能であることを確認します。
+
+
+
+
+[[svm-replication-and-recovery]]
+== SVMのレプリケーションとリカバリ
+
+Tridentはレプリケーション関係を構成することはできませんが、ストレージ管理者は https://docs.netapp.com/us-en/ontap/data-protection/snapmirror-svm-replication-concept.html["ONTAP SnapMirror"^]を使用してSVMをレプリケートできます。
+
+災害が発生した場合は、SnapMirrorデスティネーションSVMをアクティブ化してデータの提供を開始できます。システムが復元されたら、プライマリに切り替えることができます。
+
+.タスク概要
+SnapMirror SVM レプリケーション機能を使用する際は、以下の点にご留意ください：
+
+* SVM-DR が有効になっている各 SVM ごとに個別のバックエンドを作成する必要があります。
+* レプリケーションを必要としないボリュームがSVM-DRをサポートするバックエンドにプロビジョニングされることを回避するために、必要な場合にのみレプリケートされたバックエンドを選択するようにストレージクラスを構成します。
+* アプリケーション管理者は、レプリケーションに関連する追加コストと複雑さを理解し、このプロセスを開始する前にリカバリ計画を慎重に検討する必要があります。
+
+
+
+
+[[svm-replication]]
+=== SVMレプリケーション
+
+link:https://docs.netapp.com/us-en/ontap/data-protection/snapmirror-svm-replication-workflow-concept.html["ONTAP：SnapMirror SVMレプリケーション"^]を使用してSVMレプリケーション関係を作成できます。
+
+SnapMirrorでは、複製する内容を制御するオプションを設定できます。<<Tridentを使用したSVMリカバリ>>を実行する際に選択したオプションを把握しておく必要があります。
+
+* link:https://docs.netapp.com/us-en/ontap/data-protection/replicate-entire-svm-config-task.html["-identity-preserve true"^]SVM設定全体をレプリケートします。
+* link:https://docs.netapp.com/us-en/ontap/data-protection/exclude-lifs-svm-replication-task.html["-discard-configs network"^]LIFおよび関連するネットワーク設定は除外されます。
+* link:https://docs.netapp.com/us-en/ontap/data-protection/exclude-network-name-service-svm-replication-task.html["-identity-preserve false"^]ボリュームとセキュリティ設定のみをレプリケートします。
+
+
+
+
+[[svm-recovery-using-trident]]
+=== Tridentを使用したSVMリカバリ
+
+TridentはSVMの障害を自動的に検出しません。災害が発生した場合、管理者は手動でTridentフェイルオーバーを新しいSVMに開始できます。
+
+.手順
+. スケジュール済みおよび実行中のSnapMirror転送をキャンセルし、レプリケーション関係を解除し、ソースSVMを停止してから、SnapMirrorデスティネーションSVMをアクティブ化します。
+. SVMレプリケーションの設定時に `-identity-preserve false`または `-discard-config network`を指定した場合は、Tridentバックエンド定義ファイル内の `managementLIF`および `dataLIF`を更新します。
+.  `storagePrefix`がTridentバックエンド定義ファイルに存在することを確認します。このパラメータは変更できません。 `storagePrefix`を省略すると、バックエンドの更新が失敗します。
+. 次のコマンドを使用して、新しいデスティネーションSVM名を反映するように必要なすべてのバックエンドを更新します：
++
+[listing]
+----
+./tridentctl update backend <backend-name> -f <backend-json-file> -n <namespace>
+----
+.  `-identity-preserve false`または `discard-config network`を指定した場合は、すべてのアプリケーションポッドをバウンスする必要があります。
++
+
+NOTE:  `-identity-preserve true`を指定した場合、Tridentによってプロビジョニングされたすべてのボリュームは、デスティネーションSVMがアクティブ化されたときにデータの提供を開始します。
+
+
+
+
+
+[[volume-replication-and-recovery]]
+== ボリュームのレプリケーションとリカバリ
+
+TridentではSnapMirrorレプリケーション関係を設定できませんが、ストレージ管理者はlink:https://docs.netapp.com/us-en/ontap/data-protection/snapmirror-disaster-recovery-concept.html["ONTAP SnapMirrorレプリケーションとリカバリ"^]を使用してTridentで作成されたボリュームをレプリケートできます。
+
+その後、復元したボリュームをlink:../trident-use/vol-import.html["tridentctl volume import"]を使用してTridentにインポートできます。
+
+
+NOTE: ボリュームインポートは `ontap-san-economy`ドライバでサポートされています。 `ontap-nas-economy`ドライバを使用したQtreeのインポートはテクニカルプレビュー機能であり、本番環境での使用はサポートされていません。 `ontap-flexgroup-economy`ドライバでのインポートはサポートされていません。詳細については、link:../trident-use/vol-import.html["Tridentボリュームのインポート"]を参照してください。
+
+
+
+[[snapshot-data-protection]]
+== Snapshotデータ保護
+
+以下を使用してデータを保護および復元できます：
+
+* 永続ボリューム（PV）のKubernetesボリュームスナップショットを作成するための外部スナップショットコントローラーとCRD。
++
+link:../trident-use/vol-snapshots.html["ボリュームスナップショット"]
+
+* ONTAPスナップショットを使用して、ボリュームの内容全体を復元したり、個々のファイルまたはLUNをリカバリしたりできます。
++
+link:https://docs.netapp.com/us-en/ontap/data-protection/manage-local-snapshot-copies-concept.html["ONTAPスナップショット"^]
+
+

@@ -1,0 +1,433 @@
+---
+sidebar: sidebar 
+permalink: trident-reco/integrate-trident.html 
+keywords: kubernetes, clusters, nodes, components, master, compute, fsx, flexgroup, flexvolume, solidfire, hci, virtual pool 
+summary: Kubernetes クラスタは通常、2 種類のノードで構成され、それぞれが異なる機能を担当します。 
+---
+= TridentをKubernetesと統合する
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentを統合するには、次のような設計とアーキテクチャの要素を統合する必要があります：ドライバーの選択と展開、ストレージクラスの設計、仮想プールの設計、永続ボリュームクレーム（PVC）がストレージ プロビジョニングに与える影響、ボリューム操作、およびTridentを使用したOpenShiftサービスの展開。
+
+
+
+[[driver-selection-and-deployment]]
+== ドライバの選択と導入
+
+ストレージ システムのバックエンド ドライバを選択して導入します。
+
+
+
+[[ontap-backend-drivers]]
+=== ONTAP バックエンドドライバ
+
+ONTAP バックエンド ドライバは、使用するプロトコルとストレージ システムでのボリュームのプロビジョニング方法によって区別されます。そのため、導入するドライバを決定する際は慎重に検討してください。
+
+より高いレベルでは、アプリケーションに共有ストレージを必要とするコンポーネント（同じ PVC にアクセスする複数のポッド）がある場合、NAS ベースのドライバーがデフォルトの選択肢になりますが、ブロックベースの iSCSI ドライバーは非共有ストレージのニーズを満たします。アプリケーションの要件と、ストレージおよびインフラストラクチャ チームの習熟度に基づいてプロトコルを選択します。一般的に言えば、ほとんどのアプリケーションではそれらの間にほとんど違いがないため、共有ストレージ（複数のポッドが同時にアクセスする必要がある場合）が必要かどうかに基づいて決定することがよくあります。
+
+利用可能な ONTAP バックエンドドライバーは次のとおりです：
+
+* `ontap-nas`：プロビジョニングされた各PVは完全なONTAP FlexVolumeです。
+* `ontap-nas-economy`：プロビジョニングされた各PVはqtreeで、FlexVolumeあたりのqtree数は設定可能です（デフォルトは200）。
+* `ontap-nas-flexgroup`：各PVは完全なONTAP FlexGroupとしてプロビジョニングされ、SVMに割り当てられたすべてのアグリゲートが使用されます。
+* `ontap-san`：プロビジョニングされた各PVは、それ自身のFlexVolume内のLUNです。
+* `ontap-san-economy`：プロビジョニングされた各PVはLUNであり、FlexVolumeあたりのLUN数は設定可能です（デフォルトは100）。
+
+
+3 つの NAS ドライバーのいずれかを選択すると、アプリケーションで利用できる機能にいくつかの影響が生じます。
+
+以下の表では、すべての機能がTridentを通じて公開されているわけではないことに注意してください。一部の機能は、その機能が必要な場合、プロビジョニング後にストレージ管理者が適用する必要があります。上付き脚注は、機能およびドライバーごとに機能を区別します。
+
+[cols="20,10,10,10,10,10,10,10"]
+|===
+| ONTAP NASドライバー | Snapshot 数 | クローン | 動的エクスポートポリシー | マルチアタッチ | QoS | サイズ変更 | レプリケーション 
+
+
+| `ontap-nas` | はい | はい | はい footnote:5[] | はい | はい footnote:1[] | はい | はい footnote:1[] 
+
+
+| `ontap-nas-economy` | NOfootnote：3［］ | NOfootnote：3［］ | はい footnote:5[] | はい | NOfootnote：3［］ | はい | NOfootnote：3［］ 
+
+
+| `ontap-nas-flexgroup` | はい footnote:1[] | いいえ | はい footnote:5[] | はい | はい footnote:1[] | はい | はい footnote:1[] 
+|===
+Tridentは、ONTAP用に2つのSANドライバを提供しており、その機能は以下のとおりです。
+
+[cols="20,10,10,10,10,10,10,10"]
+|===
+| ONTAP SANドライバー | Snapshot 数 | クローン | マルチアタッチ | 双方向 CHAP | QoS | サイズ変更 | レプリケーション 
+
+
+| `ontap-san` | はい | はい | はい footnote:4[] | はい | はい footnote:1[] | はい | はい footnote:1[] 
+
+
+| `ontap-san-economy` | はい | はい | はい footnote:4[] | はい | NOfootnote：3［］ | はい | NOfootnote：3［］ 
+|===
+[verse]
+上記の表の脚注：Yesfootnote:1[]：Tridentで管理されていません Yesfootnote:2[]：Tridentで管理されていますが、PV単位ではありません NOfootnote:3[]：Tridentで管理されておらず、PV単位でもありません Yesfootnote:4[]：rawブロックボリュームでサポートされています Yesfootnote:5[]：Tridentでサポートされています
+
+PV粒度ではない機能は、FlexVolume全体に適用され、すべてのPV（つまり、共有FlexVols内のqtreeまたはLUN）は共通のスケジュールを共有します。
+
+上の表からわかるように、 `ontap-nas`と `ontap-nas-economy`の機能の多くは同じです。ただし、 `ontap-nas-economy`ドライバーはPV単位の粒度でスケジュールを制御する機能を制限するため、特にディザスタリカバリとバックアップ計画に影響を与える可能性があります。ONTAPストレージでPVCクローン機能を活用したい開発チームにとって、これは `ontap-nas`、 `ontap-san`または `ontap-san-economy`ドライバーを使用する場合にのみ可能です。
+
+
+NOTE:  `solidfire-san`ドライバは PVC のクローニングも可能です。
+
+
+
+[[cloud-volumes-ontap-backend-drivers]]
+=== Cloud Volumes ONTAP バックエンドドライバ
+
+Cloud Volumes ONTAPは、ファイル共有や、NASおよびSANプロトコル（NFS、SMB/CIFS、iSCSI）を提供するブロックレベルのストレージなど、さまざまなユースケースに対応するデータ管理とエンタープライズクラスのストレージ機能を提供します。Cloud Volume ONTAPと互換性のあるドライバーは `ontap-nas`、 `ontap-nas-economy`、 `ontap-san`、 `ontap-san-economy`です。これらはCloud Volume ONTAP for AzureおよびCloud Volume ONTAP for GCPに適用されます。
+
+
+
+[[amazon-fsx-for-ontap-backend-drivers]]
+=== Amazon FSx for ONTAP バックエンドドライバ
+
+Amazon FSx for NetApp ONTAP では、使い慣れたNetAppの機能、パフォーマンス、管理機能を活用しながら、AWS にデータを保存することのシンプルさ、俊敏性、セキュリティ、スケーラビリティのメリットを享受できます。FSx for ONTAP は、多数の ONTAP ファイルシステム機能と管理 API をサポートしています。Cloud Volume ONTAP と互換性のあるドライバーは、 `ontap-nas`、 `ontap-nas-economy`、 `ontap-nas-flexgroup`、 `ontap-san`、 `ontap-san-economy`です。
+
+
+
+[[netapp-hcisolidfire-backend-drivers]]
+=== NetApp HCI/SolidFire バックエンドドライバ
+
+ `solidfire-san`ドライバは、NetApp HCI/SolidFireプラットフォームで使用され、管理者がQoS制限に基づいてTrident用のElementバックエンドを設定するのに役立ちます。Tridentによってプロビジョニングされたボリュームに特定のQoS制限を設定するようにバックエンドを設計する場合は、バックエンドファイルの `type`パラメータを使用します。管理者は、 `limitVolumeSize`パラメータを使用して、ストレージ上に作成できるボリュームサイズを制限することもできます。現在、ボリュームのサイズ変更やボリュームの複製などのElementストレージ機能は、 `solidfire-san`ドライバではサポートされていません。これらの操作は、Element Software Web UIを通じて手動で実行する必要があります。
+
+[cols="20,10,10,10,10,10,10,10"]
+|===
+| SolidFireドライバ | Snapshot 数 | クローン | マルチアタッチ | CHAP | QoS | サイズ変更 | レプリケーション 
+
+
+| `solidfire-san` | はい | はい | はい footnote:2[] | はい | はい | はい | はい footnote:1[] 
+|===
+[verse]
+脚注：はい脚注：1[]：Tridentで管理されていません はい脚注：2[]：rawブロックボリュームでサポートされています
+
+
+
+[[azure-netapp-files-backend-drivers]]
+=== Azure NetApp Files バックエンドドライバ
+
+Tridentは `azure-netapp-files`ドライバーを使用してlink:https://azure.microsoft.com/en-us/products/netapp/["Azure NetApp Files"^]サービスを管理します。
+
+このドライバの詳細と設定方法については、link:https://docs.netapp.com/us-en/trident/trident-use/anf.html["Azure NetApp Files の Trident バックエンド構成"^]を参照してください。
+
+[cols="20,10,10,10,10,10,10"]
+|===
+| Azure NetApp Files ドライバ | Snapshot 数 | クローン | マルチアタッチ | QoS | 拡張 | レプリケーション 
+
+
+| `azure-netapp-files` | はい | はい | はい | はい | はい | はい footnote:1[] 
+|===
+[verse]
+脚注：はい脚注：1[]：Tridentで管理されていません
+
+
+
+[[storage-class-design]]
+== ストレージクラスの設計
+
+Kubernetes ストレージクラスオブジェクトを作成するには、個々のストレージクラスを設定して適用する必要があります。このセクションでは、アプリケーションのストレージクラスを設計する方法について説明します。
+
+
+
+[[specific-backend-utilization]]
+=== 特定のバックエンドの利用
+
+特定のストレージ クラス オブジェクト内でフィルタリングを使用すると、その特定のストレージ クラスで使用されるストレージ プールまたはプール セットを決定できます。ストレージ クラスでは、次の 3 セットのフィルターを設定できます： `storagePools`、 `additionalStoragePools`、および/または `excludeStoragePools`。
+
+ `storagePools`パラメータは、指定された属性に一致するプールのセットにストレージを制限するのに役立ちます。 `additionalStoragePools`パラメータは、属性および `storagePools`パラメータによって選択されたプールのセットとともに、Tridentがプロビジョニングに使用するプールのセットを拡張するために使用されます。いずれかのパラメータを単独で使用することも、両方を組み合わせて使用することもでき、適切なストレージプールのセットが選択されるようにすることができます。
+
+ `excludeStoragePools`パラメータは、属性に一致するリストされたプールのセットを具体的に除外するために使用されます。
+
+
+
+[[emulate-qos-policies]]
+=== QoS ポリシーをエミュレートする
+
+ストレージクラスを設計してサービス品質ポリシーをエミュレートする場合は、 `media`属性を `hdd`または `ssd`として設定したストレージクラスを作成します。ストレージクラスに記載されている `media`属性に基づいて、Tridentはメディア属性に一致する `hdd`または `ssd`アグリゲートを提供する適切なバックエンドを選択し、特定のアグリゲートへのボリュームのプロビジョニングを指示します。したがって、 `media`属性を `ssd`に設定したストレージクラスPREMIUMを作成でき、これはPREMIUM QoSポリシーとして分類できます。メディア属性を`hdd'に設定した別のストレージクラスSTANDARDを作成でき、これはSTANDARD QoSポリシーとして分類できます。また、ストレージクラスの``IOPS''属性を使用して、QoSポリシーとして定義できるElementアプライアンスにプロビジョニングをリダイレクトすることもできます。
+
+
+
+[[utilize-backend-based-on-specific-features]]
+=== 特定の機能に基づいてバックエンドを利用する
+
+ストレージ クラスは、シン プロビジョニング、シック プロビジョニング、スナップショット、クローン、暗号化などの機能が有効になっている特定のバックエンドでボリューム プロビジョニングを指示するように設計できます。使用するストレージを指定するには、必要な機能が有効になっている適切なバックエンドを指定するストレージ クラスを作成します。
+
+
+
+[[virtual-pools]]
+=== 仮想プール
+
+仮想プールはすべての Trident バックエンドで利用できます。Trident が提供する任意のドライバを使用して、任意のバックエンドに仮想プールを定義できます。
+
+仮想プールを使用すると、管理者はストレージ クラスを通じて参照できるバックエンドの抽象化レベルを作成できるため、バックエンドでのボリュームの配置の柔軟性と効率性が向上します。同じサービス クラスで異なるバックエンドを定義できます。さらに、同じバックエンド上に、異なる特性を持つ複数のストレージ プールを作成することもできます。ストレージ クラスが特定のラベルを持つセレクタで構成されている場合、Trident はボリュームを配置するために、すべてのセレクター ラベルに一致するバックエンドを選択します。ストレージ クラス セレクタ ラベルが複数のストレージ プールに一致する場合、Trident はそのうちの 1 つを選択してボリュームをプロビジョニングします。
+
+
+
+[[virtual-pool-design]]
+== 仮想プールの設計
+
+バックエンドを作成するときに、通常は一連のパラメータを指定できます。管理者が同じストレージ資格情報と異なるパラメータセットを持つ別のバックエンドを作成することは不可能でした。仮想プールの導入により、この問題は軽減されました。仮想プールは、バックエンドと Kubernetes ストレージ クラスの間に導入されたレベルの抽象化であり、管理者は、バックエンドに依存しない方法で、セレクターとして Kubernetes ストレージ クラスを通じて参照できるラベルとともにパラメータを定義できます。仮想プールは、Trident でサポートされているすべての NetApp バックエンドに対して定義できます。そのリストには、SolidFire/NetApp HCI、ONTAP、および Azure NetApp Files が含まれます。
+
+
+NOTE: 仮想プールを定義するときは、バックエンド定義内の既存の仮想プールの順序を変更しないことをお勧めします。既存の仮想プールの属性を編集/変更せず、代わりに新しい仮想プールを定義することもお勧めします。
+
+
+
+[[emulating-different-service-levelsqos]]
+=== 異なるサービスレベル／QoSのエミュレーション
+
+サービスクラスをエミュレートするための仮想プールを設計することが可能です。Cloud Volume Service for Azure NetApp Filesの仮想プール実装を使用して、さまざまなサービスクラスを設定する方法を見てみましょう。Azure NetApp Filesバックエンドを、異なるパフォーマンスレベルを表す複数のラベルで構成します。 `servicelevel`アスペクトを適切なパフォーマンスレベルに設定し、各ラベルの下に他の必要なアスペクトを追加します。次に、異なる仮想プールにマッピングされる異なるKubernetesストレージクラスを作成します。 `parameters.selector`フィールドを使用して、各StorageClassは、ボリュームをホストするために使用できる仮想プールを指定します。
+
+
+
+[[assigning-specific-set-of-aspects]]
+=== 特定のアスペクトセットの割り当て
+
+単一のストレージ バックエンドから、特定の側面を持つ複数の仮想プールを設計できます。そのためには、バックエンドを複数のラベルで構成し、各ラベルの下に必要な側面を設定します。次に、 `parameters.selector`フィールドを使用して、異なる仮想プールにマップされる異なるKubernetesストレージクラスを作成します。バックエンドでプロビジョニングされるボリュームには、選択した仮想プールで定義された側面が設定されます。
+
+
+
+[[pvc-characteristics-which-affect-storage-provisioning]]
+=== ストレージ プロビジョニングに影響するPVCの特性
+
+要求されたストレージクラスを超える一部のパラメータが、PVC を作成する際の Trident プロビジョニング決定プロセスに影響を与える可能性があります。
+
+
+
+[[access-mode]]
+=== アクセス モード
+
+PVC 経由でストレージを要求する場合、必須フィールドの 1 つはアクセスモードです。希望するモードは、ストレージ要求をホストするために選択されたバックエンドに影響する可能性があります。
+
+Tridentは、次のマトリックスに従って指定されたアクセス方法で使用されるストレージ プロトコルとの一致を試みます。これは、基盤となるストレージ プラットフォームとは独立しています。
+
+[cols="20,30,30,30"]
+|===
+|  | ReadWriteOnce | ReadOnlyMany | ReadWriteMany 
+
+
+| iSCSI | はい | はい | はい（Rawブロック） 
+
+
+| NFS | はい | はい | はい 
+|===
+NFS バックエンドが設定されていない Trident 環境に ReadWriteMany PVC の要求を送信すると、ボリュームはプロビジョニングされません。このため、要求者はアプリケーションに適したアクセス モードを使用する必要があります。
+
+
+
+[[volume-operations]]
+== ボリューム操作
+
+
+
+[[modify-persistent-volumes]]
+=== 永続ボリュームを変更する
+
+永続ボリュームは、2つの例外を除き、Kubernetes内の不変オブジェクトです。作成したら、再利用ポリシーとサイズを変更できます。ただし、これによってボリュームの一部の側面がKubernetesの外部で変更されるのを防ぐことはできません。これは、特定のアプリケーション用にボリュームをカスタマイズしたり、容量が誤って消費されないようにしたり、あるいは何らかの理由でボリュームを別のストレージコントローラに移動したりする場合に望ましいことがあります。
+
+
+NOTE: Kubernetes のツリー内プロビジョナーは、現時点では NFS、iSCSI、または FC PV のボリューム サイズ変更操作をサポートしていません。Trident は NFS、iSCSI、FC ボリュームの拡張をサポートします。
+
+PV の接続詳細は作成後に変更できません。
+
+
+
+[[create-on-demand-volume-snapshots]]
+=== オンデマンドボリュームSnapshotを作成
+
+Tridentは、CSIフレームワークを使用したオンデマンドボリュームスナップショットの作成と、スナップショットからのPVCの作成をサポートしています。スナップショットは、ポイントインタイムデータのコピーを維持する便利な方法であり、KubernetesのソースPVから独立したライフサイクルを持ちます。これらのスナップショットを使用してPVCをクローニングできます。
+
+
+
+[[create-volumes-from-snapshots]]
+=== スナップショットからボリュームを作成する
+
+Tridentは、ボリュームスナップショットからのPersistentVolumesの作成もサポートしています。これを実現するには、PersistentVolumeClaimを作成し、 `datasource`をボリュームの作成元として必要なスナップショットとして指定します。Tridentは、スナップショットに存在するデータを含むボリュームを作成することで、このPVCを処理します。この機能により、リージョン間でのデータの複製、テスト環境の作成、破損または壊れた本番ボリューム全体の交換、特定のファイルやディレクトリの取得と別の接続されたボリュームへの転送が可能になります。
+
+
+
+[[move-volumes-in-the-cluster]]
+=== クラスタ内のボリュームを移動する
+
+ストレージ管理者は、ストレージコンシューマに影響を与えることなく、ONTAPクラスタ内のアグリゲートとコントローラ間でボリュームを無停止で移動できます。この処理は、TridentまたはKubernetesクラスタに影響しません。ただし、デスティネーションアグリゲートが、Tridentで使用しているSVMがアクセスできるものである必要があります。重要な点として、アグリゲートがSVMに新しく追加された場合は、Tridentに再度追加してバックエンドを更新する必要があります。これにより、Tridentが新しいアグリゲートを認識できるようにSVMの再インベントリが実行されます。
+
+ただし、バックエンド間でのボリュームの移動は、Tridentでは自動的にサポートされていません。これには、同じクラスタ内のSVM間、クラスタ間、または異なるストレージプラットフォームへの移動が含まれます（そのストレージシステムがTridentに接続されている場合でも）。
+
+ボリュームが別の場所にコピーされた場合、ボリュームインポート機能を使用して現在のボリュームをTridentにインポートできます。
+
+
+
+[[expand-volumes]]
+=== ボリュームを拡張する
+
+Tridentは、NFS、iSCSI、FCのPVのリサイズをサポートしています。これにより、ユーザーはKubernetesレイヤーを通じてボリュームを直接リサイズできます。ボリューム拡張は、ONTAPを含むすべての主要なNetAppストレージプラットフォームおよびSolidFire/NetApp HCIバックエンドで可能です。後で拡張できるようにするには、ボリュームに関連付けられたStorageClassで `allowVolumeExpansion`を `true`に設定してください。永続ボリュームのリサイズが必要な場合は、Persistent Volume Claimの `spec.resources.requests.storage`アノテーションを必要なボリュームサイズに編集します。Tridentはストレージクラスタ上で自動的にボリュームのリサイズを行います。
+
+
+
+[[import-an-existing-volume-into-kubernetes]]
+=== 既存のボリュームをKubernetesにインポートする
+
+ボリュームインポートでは、既存のストレージボリュームをKubernetes環境にインポートできます。これは現在、 `ontap-nas`、 `ontap-nas-flexgroup`、 `solidfire-san`、および `azure-netapp-files`ドライバでサポートされています。この機能は、既存のアプリケーションをKubernetesに移植する場合や、ディザスタリカバリシナリオで役立ちます。
+
+ONTAPおよび `solidfire-san`ドライバーを使用する場合は、コマンド `tridentctl import volume <backend-name> <volume-name> -f /path/pvc.yaml`を使用して、既存のボリュームをKubernetesにインポートし、Tridentで管理します。インポートボリュームコマンドで使用されるPVC YAMLまたはJSONファイルは、Tridentをプロビジョナーとして識別するストレージクラスを指します。NetApp HCI/SolidFireバックエンドを使用する場合は、ボリューム名が一意であることを確認してください。ボリューム名が重複している場合は、ボリュームインポート機能で区別できるように、ボリュームを一意の名前でクローニングします。
+
+ `azure-netapp-files`ドライバを使用する場合は、コマンド `tridentctl import volume <backend-name> <volume path> -f /path/pvc.yaml`を使用して、ボリュームをKubernetesにインポートし、Tridentで管理します。これにより、一意のボリューム参照が保証されます。
+
+上記のコマンドを実行すると、Tridentはバックエンドでボリュームを見つけて、そのサイズを読み取ります。設定されたPVCのボリュームサイズが自動的に追加され（必要に応じて上書きされます）。Tridentは新しいPVを作成し、KubernetesはPVCをPVにバインドします。
+
+特定のインポートされた PVC を必要とするコンテナがデプロイされた場合、PVC/PV ペアがボリューム インポート プロセスによってバインドされるまで、コンテナは保留状態のままになります。PVC/PV ペアがバインドされた後、他の問題がなければコンテナが起動するはずです。
+
+
+
+[[registry-service]]
+=== レジストリサービス
+
+レジストリのストレージの導入と管理については、link:https://netapp.io/["netapp.io"^]のlink:https://netapp.io/2017/08/24/deploying-the-openshift-registry-using-netapp-storage/["ブログ"^]に記載されています。
+
+
+
+[[logging-service]]
+=== ログサービス
+
+他のOpenShiftサービスと同様に、ログサービスは、プレイブックに提供されるインベントリファイル（ホスト）によって指定される構成パラメータを使用して、Ansibleを使用してデプロイされます。ここでは、2つのインストール方法について説明します：OpenShiftの初期インストール時にロギングをデプロイする方法と、OpenShiftのインストール後にロギングをデプロイする方法です。
+
+
+CAUTION: Red Hat OpenShiftバージョン3.9以降、公式ドキュメントでは、データ破損に関する懸念から、ロギングサービスにNFSを使用しないことを推奨しています。これはRed Hatによる自社製品のテストに基づいています。ONTAP NFSサーバにはこれらの問題はなく、ロギング環境を簡単にバックアップできます。最終的には、ロギングサービスのプロトコルの選択はお客様次第ですが、NetAppプラットフォームを使用する場合、どちらも問題なく動作することを知っておいてください。NFSがお好みであれば、NFSを避ける理由はありません。
+
+ログサービスでNFSを使用する場合は、Ansible変数 `openshift_enable_unsupported_configurations`を `true`に設定して、インストーラーが失敗するのを防ぐ必要があります。
+
+
+
+==== はじめに
+
+ログサービスは、オプションで、アプリケーションとOpenShiftクラスタ自体のコア運用の両方に導入できます。変数 `openshift_logging_use_ops`を `true`として指定して運用ログを導入することを選択した場合、サービスのインスタンスが2つ作成されます。運用のログインスタンスを制御する変数には「ops」が含まれますが、アプリケーションのインスタンスには含まれません。
+
+基盤となるサービスによって正しいストレージが確実に利用されるようにするには、デプロイメント方法に応じて Ansible 変数を設定することが重要です。それぞれのデプロイメント方法のオプションを見てみましょう。
+
+
+NOTE: 以下の表には、ログ サービスに関連するストレージ構成に関係する変数のみが含まれています。その他のオプションについてはlink:https://docs.redhat.com/en/documentation/openshift_container_platform/3.11/html/configuring_clusters/install-config-aggregate-logging-sizing["Red Hat OpenShiftログ記録ドキュメント"^]を参照してください。これらは、導入に応じて確認、設定、および使用する必要があります。
+
+以下の表の変数により、Ansible プレイブックは提供された詳細を使用して、ログ サービス用の PV と PVC を作成します。この方法は、OpenShift のインストール後にコンポーネントインストールプレイブックを使用するよりも柔軟性が大幅に低下しますが、既存のボリュームが利用可能な場合は、オプションになります。
+
+[cols="40,40"]
+|===
+| 変数 | 詳細 
+
+
+| `openshift_logging_storage_kind` |  `nfs`に設定すると、インストーラーでログ サービス用のNFS PVを作成します。 
+
+
+| `openshift_logging_storage_host` | NFSホストのホスト名またはIPアドレス。これは仮想マシンのdataLIFに設定する必要があります。 
+
+
+| `openshift_logging_storage_nfs_directory` | NFSエクスポートのマウントパス。たとえば、ボリュームが `/openshift_logging`のようにジャンクションされている場合は、この変数にそのパスを使用します。 
+
+
+| `openshift_logging_storage_volume_name` | 作成するPVの名前（例： `pv_ose_logs`）。 
+
+
+| `openshift_logging_storage_volume_size` | NFSエクスポートのサイズ（例： `100Gi`）。 
+|===
+OpenShiftクラスタがすでに実行されており、Tridentが導入および設定されている場合、インストーラは動的プロビジョニングを使用してボリュームを作成できます。次の変数を設定する必要があります。
+
+[cols="40,40"]
+|===
+| 変数 | 詳細 
+
+
+| `openshift_logging_es_pvc_dynamic` | 動的にプロビジョニングされたボリュームを使用するには、trueに設定します。 
+
+
+| `openshift_logging_es_pvc_storage_class_name` | PVC で使用されるストレージ クラスの名前。 
+
+
+| `openshift_logging_es_pvc_size` | PVC で要求されたボリュームのサイズ。 
+
+
+| `openshift_logging_es_pvc_prefix` | ロギング サービスで使用される PVC のプレフィックス。 
+
+
+| `openshift_logging_es_ops_pvc_dynamic` |  `true`に設定すると、オペレーションログインスタンスに動的にプロビジョニングされたボリュームを使用します。 
+
+
+| `openshift_logging_es_ops_pvc_storage_class_name` | オペレーションログインスタンスのストレージクラスの名前。 
+
+
+| `openshift_logging_es_ops_pvc_size` | ops インスタンスのボリューム要求のサイズ。 
+
+
+| `openshift_logging_es_ops_pvc_prefix` | ops インスタンス PVC のプレフィックス。 
+|===
+
+
+==== ログスタックをデプロイする
+
+初期OpenShiftインストール プロセスの一部としてログ記録を導入する場合は、標準の導入プロセスに従うだけで済みます。Ansibleは必要なサービスとOpenShiftオブジェクトを設定して導入するため、Ansibleが完了するとすぐにサービスが利用できるようになります。
+
+ただし、初期インストール後にデプロイする場合は、Ansible でコンポーネント プレイブックを使用する必要があります。このプロセスは、OpenShift のバージョンによって若干異なる場合があるため、お使いのバージョンのlink:https://docs.openshift.com/en/documentation/openshift_container_platform/3.11/["Red Hat OpenShift Container Platform 3.11ドキュメント"^]を必ずお読みになり、従ってください。
+
+
+
+[[metrics-service]]
+== メトリクスサービス
+
+メトリクスサービスは、管理者にOpenShiftクラスタのステータス、リソース使用率、可用性に関する貴重な情報を提供します。また、ポッドの自動スケール機能にも必要であり、多くの組織はメトリクスサービスからのデータをチャージバックやショーバックアプリケーションに使用しています。
+
+ログサービスと同様に、OpenShift全体として、Ansibleはメトリクスサービスのデプロイに使用されます。また、ログサービスと同様に、メトリクスサービスは、クラスタの初期セットアップ時、またはコンポーネントインストール方法を使用して運用開始後にデプロイできます。次の表には、メトリクスサービスの永続ストレージを構成するときに重要な変数が含まれています。
+
+
+NOTE: 以下の表には、メトリック サービスに関連するストレージ構成に関係する変数のみが含まれています。ドキュメントには他にも多くのオプションが記載されており、導入に応じて確認、設定、使用する必要があります。
+
+[cols="40,40"]
+|===
+| 変数 | 詳細 
+
+
+| `openshift_metrics_storage_kind` |  `nfs`に設定すると、インストーラーでログ サービス用のNFS PVを作成します。 
+
+
+| `openshift_metrics_storage_host` | NFSホストのホスト名またはIPアドレス。これは、SVMのdataLIFに設定する必要があります。 
+
+
+| `openshift_metrics_storage_nfs_directory` | NFSエクスポートのマウントパス。たとえば、ボリュームが `/openshift_metrics`のようにジャンクションされている場合は、この変数にそのパスを使用します。 
+
+
+| `openshift_metrics_storage_volume_name` | 作成するPVの名前（例： `pv_ose_metrics`）。 
+
+
+| `openshift_metrics_storage_volume_size` | NFSエクスポートのサイズ（例： `100Gi`）。 
+|===
+OpenShiftクラスタがすでに実行されており、Tridentが導入および設定されている場合、インストーラは動的プロビジョニングを使用してボリュームを作成できます。次の変数を設定する必要があります。
+
+[cols="40,40"]
+|===
+| 変数 | 詳細 
+
+
+| `openshift_metrics_cassandra_pvc_prefix` | メトリック PVC に使用するプレフィックス。 
+
+
+| `openshift_metrics_cassandra_pvc_size` | 要求するボリュームのサイズ。 
+
+
+| `openshift_metrics_cassandra_storage_type` | メトリックに使用するストレージのタイプ。Ansibleが適切なストレージクラスを持つPVCを作成するには、これをdynamicに設定する必要があります。 
+
+
+| `openshift_metrics_cassanda_pvc_storage_class_name` | 使用するストレージ クラスの名前。 
+|===
+
+
+[[deploy-the-metrics-service]]
+=== メトリクスサービスを導入する
+
+hosts/inventory ファイルに適切な Ansible 変数を定義して、Ansible を使用してサービスをデプロイします。OpenShift のインストール時にデプロイする場合は、PV が自動的に作成されて使用されます。OpenShift のインストール後にコンポーネントプレイブックを使用してデプロイする場合は、Ansible によって必要な PVC が作成され、Trident によってストレージがプロビジョニングされた後、サービスがデプロイされます。
+
+上記の変数と導入プロセスは、OpenShiftのバージョンごとに変更される可能性があります。お使いの環境に合わせて構成されるように、バージョンに応じたlink:https://docs.redhat.com/en/documentation/openshift_container_platform/3.11/html/configuring_clusters/install-config-cluster-metrics["Red HatのOpenShift導入ガイド"^]を必ず確認して従ってください。

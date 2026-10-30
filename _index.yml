@@ -1,0 +1,68 @@
+---
+indexpage:
+  title: Trident 26.06 ドキュメント
+  summary: Trident は、NetApp が管理するオープンソースのストレージプロビジョナーおよびオーケストレーターです。DockerおよびKubernetesで管理されるコンテナ化されたアプリケーション用のストレージボリュームを作成できます。
+  keywords: trident, 2602, documentation, release notes, get started, deploy, upgrade,
+    use, data management, protection, demos, tutorials, blogs, community
+  lead: Trident は、NetApp が管理するオープンソースのストレージプロビジョナーおよびオーケストレーターです。DockerおよびKubernetesで管理されるコンテナ化されたアプリケーション用のストレージボリュームを作成できます。
+  tiles:
+  - title: リリース ノート
+    links:
+    - title: 新機能
+      url: trident-rn.html
+    - title: 以前のバージョン
+      url: "/earlier-versions.html"
+    - title: ASA r2ストレージシステムのTridentサポート
+      url: "/trident-asar2-support.html"
+  - title: はじめに
+    links:
+    - title: Tridentの詳細
+      url: "/trident-get-started/intro.html"
+    - title: 要件
+      url: "/trident-get-started/requirements.html"
+    - title: クイック スタート
+      url: "/trident-get-started/quickstart.html"
+  - title: Tridentを導入
+    links:
+    - title: Tridentオペレーターを使用した導入
+      url: "/trident-install/kubernetes-deploy-operator.html"
+    - title: tridentctl でデプロイする
+      url: "/trident-install/kubernetes-deploy-tridentctl.html"
+    - title: Docker用Tridentを導入する
+      url: "/trident-docker/deploy-docker.html"
+  - title: Tridentのアップグレード
+    links:
+    - title: Tridentオペレータを使用したアップグレード
+      url: "/trident-managing-k8s/upgrade-operator.html"
+    - title: tridentctl によるアップグレード
+      url: "/trident-managing-k8s/upgrade-tridentctl.html"
+  - title: Tridentを使用
+    links:
+    - title: ワーカーノードを準備する
+      url: "/trident-use/worker-node-prep.html"
+    - title: バックエンドを設定
+      url: "/trident-use/backends.html"
+    - title: ストレージクラスの管理
+      url: "/trident-use/manage-stor-class.html"
+    - title: ボリューム操作を実行する
+      url: "/trident-use/vol-operations.html"
+  - title: 高度なデータ管理と保護
+    links:
+    - title: Trident Protectによる高度なデータ保護
+      url: "/trident-protect/learn-about-trident-protect.html"
+    - title: Trident Protectを導入する
+      url: "/trident-protect/trident-protect-installation.html"
+    - title: Trident Protectのアップグレード
+      url: "/trident-protect/trident-protect-upgrade.html"
+  - title: デモとチュートリアル
+    links:
+    - title: Trident ビデオ
+      url: https://media.netapp.com/video-detail/c5bebae0-aab6-5fed-ae16-df6a3a8b260d/netapp-trident-advanced-data-protection-for-kubernetes-applications
+  - title: ブログとコミュニティ
+    links:
+    - title: TridentおよびTrident Protectのブログ
+      url: "/blog-posts.html"
+    - title: NetApp.io
+      url: https://netapp.io/
+    - title: Discord
+      url: https://discord.gg/NetApp

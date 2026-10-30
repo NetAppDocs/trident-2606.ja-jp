@@ -1,0 +1,29 @@
+---
+sidebar: sidebar 
+permalink: trident-concepts/snapshots.html 
+keywords: provisioning, Trident 
+summary: Tridentがドライバーのボリュームスナップショットの作成を処理する方法の詳細については、こちらをご覧ください。 
+---
+= Tridentボリュームスナップショットの作成
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentがドライバーのボリュームスナップショットの作成を処理する方法の詳細については、こちらをご覧ください。
+
+
+
+[[learn-about-volume-snapshot-creation]]
+== ボリューム Snapshot の作成について学ぶ
+
+*  `ontap-nas`、 `ontap-san`、および `azure-netapp-files`ドライバの場合、各永続ボリューム（PV）はFlexVolボリュームにマッピングされます。その結果、ボリュームスナップショットはNetAppスナップショットとして作成されます。NetAppスナップショットテクノロジは、競合するスナップショットテクノロジよりも優れた安定性、スケーラビリティ、リカバリ性、パフォーマンスを提供します。これらのスナップショットコピーは、作成に必要な時間とストレージスペースの両方において非常に効率的です。
+*  `ontap-nas-flexgroup`ドライバの場合、各永続ボリューム（PV）はFlexGroupにマッピングされます。その結果、ボリュームスナップショットはNetApp FlexGroupスナップショットとして作成されます。NetAppスナップショットテクノロジは、競合するスナップショットテクノロジよりも優れた安定性、スケーラビリティ、リカバリ性、パフォーマンスを提供します。これらのスナップショットコピーは、作成に必要な時間とストレージスペースの両方において非常に効率的です。
+*  `ontap-san-economy`ドライバの場合、PVは共有FlexVolボリューム上に作成されたLUNにマップされます。PVのVolumeSnapshotsは、関連付けられたLUNのFlexClonesを実行することで実現されます。ONTAP FlexCloneテクノロジにより、最大規模のデータセットであってもほぼ瞬時にコピーを作成できます。コピーは親とデータブロックを共有し、メタデータに必要なストレージ以外は消費しません。
+*  `solidfire-san`ドライバの場合、各PVはNetApp Element ソフトウェア/NetApp HCI クラスタで作成されたLUNにマッピングされます。VolumeSnapshotsは、基盤となるLUNのElementスナップショットで表されます。これらのスナップショットはポイントインタイムコピーであり、システムリソースとスペースをわずかしか消費しません。
+*  `ontap-nas`および `ontap-san`ドライバーを使用する場合、ONTAPスナップショットはFlexVolのポイントインタイムコピーであり、FlexVol自体のスペースを消費します。これにより、スナップショットが作成/スケジュールされるにつれて、ボリューム内の書き込み可能な領域の量が時間の経過とともに減少する可能性があります。これを解決する簡単な方法の1つは、Kubernetesを使用してサイズを変更し、ボリュームを増やすことです。もう1つのオプションは、不要になったスナップショットを削除することです。Kubernetesを通じて作成されたVolumeSnapshotが削除されると、Tridentは関連するONTAPスナップショットを削除します。Kubernetes経由で作成されなかったONTAPスナップショットも削除できます。
+
+
+Tridentでは、VolumeSnapshotsを使用して、それらから新しいPVを作成できます。これらのスナップショットからPVを作成するには、サポートされているONTAPバックエンドに対してFlexCloneテクノロジを使用します。スナップショットからPVを作成する場合、バッキングボリュームはスナップショットの親ボリュームのFlexCloneになります。 `solidfire-san`ドライバは、Element ソフトウェアボリュームクローンを使用してスナップショットからPVを作成します。ここでは、Element スナップショットからクローンを作成します。

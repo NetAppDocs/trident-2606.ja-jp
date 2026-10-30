@@ -1,0 +1,138 @@
+---
+sidebar: sidebar 
+permalink: trident-docker/volumes-docker.html 
+keywords: create volumes, Trident, trident for docker, docker, docker volume 
+summary: 'ボリュームを作成するには、必要に応じて Trident ドライバー名を指定して、標準の `docker volume`コマンドを使用します。' 
+---
+= ボリュームの操作
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+標準の `docker volume`コマンドを使用して、必要に応じてTridentドライバー名を指定することで、ボリュームを簡単に作成、複製、削除できます。
+
+
+
+[[create-a-volume]]
+== ボリュームの作成
+
+* デフォルト名を使用してドライバー付きのボリュームを作成します：
++
+[source, console]
+----
+docker volume create -d netapp --name firstVolume
+----
+* 特定のTridentインスタンスでボリュームを作成：
++
+[source, console]
+----
+docker volume create -d ntap_bronze --name bronzeVolume
+----
++
+
+NOTE: link:volume-driver-options.html["options"^]を指定しない場合は、ドライバーのデフォルトが使用されます。
+
+* デフォルトのボリュームサイズを上書きします。ドライバーを使用して20 GiBのボリュームを作成するには、次の例を参照してください：
++
+[source, console]
+----
+docker volume create -d netapp --name my_vol --opt size=20G
+----
++
+
+TIP: ボリュームサイズは、オプションの単位（例：10G、20GB、3TiB）を持つ整数値を含む文字列として表されます。単位が指定されていない場合、デフォルトはGです。サイズの単位は、2の累乗（B、KiB、MiB、GiB、TiB）または10の累乗（B、KB、MB、GB、TB）で表すことができます。省略単位には2の累乗を使用します（G = GiB、T = TiB、…）。
+
+
+
+
+
+[[remove-a-volume]]
+== ボリュームを削除する
+
+* 他の Docker ボリュームと同じようにボリュームを削除します：
++
+[source, console]
+----
+docker volume rm firstVolume
+----
++
+
+IMPORTANT:  `solidfire-san`ドライバを使用する場合、上記の例ではボリュームが削除およびパージされます。
+
+
+
+Docker用のTridentをアップグレードするには、以下の手順を実行してください。
+
+
+
+[[clone-a-volume]]
+== ボリュームをクローニングする
+
+ `ontap-nas`、 `ontap-san`、および `solidfire-san`ストレージドライバを使用する場合、Tridentはボリュームをクローニングできます。 `ontap-nas-flexgroup`または `ontap-nas-economy`ドライバーを使用する場合、クローン作成はサポートされません。既存のボリュームから新しいボリュームを作成すると、新しいスナップショットが作成されます。
+
+* ボリュームを検査してスナップショットを列挙します：
++
+[source, console]
+----
+docker volume inspect <volume_name>
+----
+* 既存のボリュームから新しいボリュームを作成します。これにより、新しいスナップショットが作成されます：
++
+[source, console]
+----
+docker volume create -d <driver_name> --name <new_name> -o from=<source_docker_volume>
+----
+* ボリューム上の既存のスナップショットから新しいボリュームを作成します。これにより、新しいスナップショットは作成されません：
++
+[source, console]
+----
+docker volume create -d <driver_name> --name <new_name> -o from=<source_docker_volume> -o fromSnapshot=<source_snap_name>
+----
+
+
+
+
+[[example]]
+=== 例
+
+[source, console]
+----
+docker volume inspect firstVolume
+
+[
+  {
+    "Driver": "ontap-nas",
+    "Labels": null,
+    "Mountpoint": "/var/lib/docker-volumes/ontap-nas/netappdvp_firstVolume",
+    "Name": "firstVolume",
+    "Options": {},
+    "Scope": "global",
+    "Status": {
+      "Snapshots": [
+        {
+          "Created": "2017-02-10T19:05:00Z",
+          "Name": "hourly.2017-02-10_1505"
+        }
+      ]
+    }
+  }
+]
+
+docker volume create -d ontap-nas --name clonedVolume -o from=firstVolume
+clonedVolume
+
+docker volume rm clonedVolume
+docker volume create -d ontap-nas --name volFromSnap -o from=firstVolume -o fromSnapshot=hourly.2017-02-10_1505
+volFromSnap
+
+docker volume rm volFromSnap
+----
+
+
+[[access-externally-created-volumes]]
+== 外部で作成されたボリュームにアクセスする
+
+コンテナは、パーティションがなく、ファイルシステムがTridentでサポートされている場合に*のみ*、Tridentを使用して外部で作成されたブロックデバイス（またはそのクローン）にアクセスできます（例： `ext4`でフォーマットされた `/dev/sdc1`は、Trident経由ではアクセスできません）。

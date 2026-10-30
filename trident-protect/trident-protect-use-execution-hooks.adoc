@@ -1,0 +1,386 @@
+---
+sidebar: sidebar 
+permalink: trident-protect/trident-protect-use-execution-hooks.html 
+keywords: trident, protect, execution hooks 
+summary: Trident Protectを使用して、アプリのカスタム実行フックを作成できます。実行フックを作成するには、所有者、管理者、またはメンバーの権限が必要です。 
+---
+= Trident Protect 実行フックを管理する
+:hardbreaks:
+:allow-uri-read: 
+:nofooter: 
+:icons: font
+:linkattrs: 
+:imagesdir: ../media/
+
+
+[role="lead"]
+実行フックは、管理対象アプリのデータ保護操作と組み合わせて実行するように構成できるカスタム アクションです。たとえば、データベース アプリがある場合、実行フックを使用して、スナップショットの前にすべてのデータベース トランザクションを一時停止し、スナップショットが完了した後にトランザクションを再開できます。これにより、アプリケーションの一貫性のあるスナップショットが保証されます。
+
+
+
+[[types-of-execution-hooks]]
+== 実行フックのタイプ
+
+Trident Protect は、実行できるタイミングに基づいて、次のタイプの実行フックをサポートしています。
+
+* 事前スナップショット
+* スナップショット後
+* バックアップ前
+* バックアップ後
+* 復元後
+* フェイルオーバー後
+
+
+
+
+[[order-of-execution]]
+=== 実行順序
+
+データ保護操作が実行されると、実行フック イベントが次の順序で発生します：
+
+. 適用可能なカスタム事前操作実行フックは、該当するコンテナ上で実行されます。必要な数だけカスタム操作前フックを作成して実行できますが、操作前のこれらのフックの実行順序は保証されておらず、構成もできません。
+. 該当する場合、ファイルシステムのフリーズが発生します。link:trident-protect-requirements.html#protecting-data-with-kubevirt-vms["Trident Protectを使用したファイルシステムのフリーズの設定の詳細については、こちらをご覧ください"]。
+. データ保護操作が実行されます。
+. 該当する場合、凍結されたファイルシステムは凍結解除されます。
+. 適用可能なカスタム操作後実行フックは、適切なコンテナで実行されます。必要な数だけカスタム操作後フックを作成して実行できますが、操作後のこれらのフックの実行順序は保証されておらず、構成もできません。
+
+
+同じタイプ（たとえば、pre-snapshot）の実行フックを複数作成する場合、それらのフックの実行順序は保証されません。ただし、異なるタイプのフックの実行順序は保証されます。たとえば、さまざまな種類のフックがすべて含まれる構成の実行順序は次のとおりです：
+
+. スナップショット前のフックが実行されました
+. スナップショット後のフックが実行されました
+. バックアップ前のフックが実行されました
+. バックアップ後のフックが実行されました
+
+
+
+NOTE: 上記の順序の例は、既存のスナップショットを使用しないバックアップを実行する場合にのみ適用されます。
+
+
+NOTE: 本番環境で実行フックスクリプトを有効にする前に、必ずテストしてください。'kubectl exec' コマンドを使用すると、スクリプトを簡単にテストできます。本番環境で実行フックを有効にした後、結果のスナップショットとバックアップをテストして、一貫性があることを確認します。これを行うには、アプリを一時的な名前空間に複製し、スナップショットまたはバックアップを復元してから、アプリをテストします。
+
+
+NOTE: スナップショット前の実行フックによって Kubernetes リソースが追加、変更、または削除された場合、それらの変更はスナップショットまたはバックアップと、その後のすべてのリストア処理に含まれます。
+
+
+
+[[important-notes-about-custom-execution-hooks]]
+== カスタム実行フックに関する重要な注意事項
+
+アプリの実行フックを計画するときは、次の点を考慮してください。
+
+* 実行フックは、アクションを実行するためにスクリプトを使用する必要があります。複数の実行フックが同じスクリプトを参照できます。
+* Trident Protect では、実行フックが使用するスクリプトを実行可能なシェル スクリプトの形式で記述する必要があります。
+* スクリプトのサイズは96KBに制限されています。
+* Trident Protect は実行フックの設定と一致する基準を使用して、スナップショット、バックアップ、または復元操作に適用可能なフックを決定します。
+
+
+
+NOTE: 実行フックは、多くの場合、実行対象のアプリケーションの機能を低下させたり完全に無効にしたりするため、カスタム実行フックの実行にかかる時間を常に最小限に抑えるようにする必要があります。関連する実行フックを使用してバックアップまたは Snapshot 操作を開始したが、その後キャンセルした場合でも、バックアップまたは Snapshot 操作がすでに開始されている場合は、フックは引き続き実行できます。つまり、バックアップ後の実行フックで使用されるロジックでは、バックアップが完了したと想定することはできません。
+
+
+
+[[execution-hook-filters]]
+== 実行フックフィルター
+
+アプリケーションの実行フックを追加または編集するときに、実行フックにフィルタを追加して、フックが一致するコンテナを管理できます。フィルタは、すべてのコンテナで同じコンテナイメージを使用するアプリケーションで役立ちますが、各イメージを異なる目的で使用する場合があります（Elasticsearchなど）。フィルタを使用すると、実行フックを一部の同一コンテナでのみ実行し、必ずしもすべての同一コンテナで実行するとは限らないシナリオを作成できます。単一の実行フックに対して複数のフィルタを作成した場合、それらは論理AND演算子で結合されます。実行フックごとに最大10個のアクティブなフィルタを設定できます。
+
+実行フックに追加する各フィルターは、正規表現を使用してクラスター内のコンテナを照合します。フックがコンテナに一致すると、フックはそのコンテナ上で関連付けられたスクリプトを実行します。フィルタ用の正規表現は正規表現2（RE2）構文を使用しますが、この構文ではコンテナを一致リストから除外するフィルタを作成することはできません。Trident Protect が実行フックフィルタの正規表現でサポートする構文については、 https://github.com/google/re2/wiki/Syntax["正規表現2（RE2）構文のサポート"^]を参照してください。
+
+
+NOTE: リストアまたはクローン処理の後に実行される実行フックにネームスペースフィルタを追加し、リストアまたはクローンのソースとデスティネーションが異なるネームスペースにある場合、ネームスペースフィルタはデスティネーションネームスペースにのみ適用されます。
+
+
+
+[[execution-hook-examples]]
+== 実行フックの例
+
+ https://github.com/NetApp/Verda["NetApp Verda GitHubプロジェクト"]にアクセスして、Apache Cassandra や Elasticsearch などの一般的なアプリの実際の実行フックをダウンロードしてください。また、例を参照したり、独自のカスタム実行フックを構成するためのアイデアを入手したりすることもできます。
+
+
+NOTE: Verdaリポジトリのスクリプトは現状のまま提供されており、NetAppによる公式サポートの対象外です。NetAppのサポート対象は、Trident Protect内の実行フックフレームワークのみです。
+
+
+
+[[create-an-execution-hook]]
+== 実行フックを作成する
+
+Trident Protectを使用して、アプリのカスタム実行フックを作成できます。実行フックを作成するには、所有者、管理者、またはメンバーの権限が必要です。
+
+[role="tabbed-block"]
+====
+.CRを使用する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-hook.yaml`という名前を付けます。
+. 以下の属性を Trident Protect 環境とクラスタ構成に合わせて設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.applicationRef*：（_必須_）実行フックを実行するアプリケーションの Kubernetes 名。
+** *spec.stage*：（_必須_）アクション中に実行フックを実行するステージを示す文字列。可能な値：
++
+*** プレ
+*** 投稿
+
+
+** *spec.action*：（_必須_）指定された実行フックフィルタが一致した場合に、実行フックが実行するアクションを示す文字列。可能な値：
++
+*** Snapshot
+*** バックアップ
+*** リストア
+*** フェイルオーバー
+
+
+** *spec.enabled*：（_オプション_）この実行フックが有効か無効かを示します。指定がない場合、デフォルト値はtrueです。
+** *spec.hookSource*：（_必須_）base64 でエンコードされたフック スクリプトを含む文字列。
+** *spec.timeout*：（_オプション_）実行フックの実行が許可される時間（分）を定義する数値。最小値は 1 分で、指定されていない場合のデフォルト値は 25 分です。
+** *spec.arguments*: （_オプション_）実行フックに指定できる引数の YAML リスト。
+** *spec.matchingCriteria*：（_オプション_）条件キーと値のペアのオプションのリスト。各ペアは実行フック フィルターを構成します。実行フックごとに最大 10 個のフィルターを追加できます。
+** *spec.matchingCriteria.type*：（_オプション_）実行フックのフィルタータイプを識別する文字列。可能な値：
++
+*** ContainerImage
+*** ContainerName
+*** PodName
+*** PodLabel
+*** NamespaceName
+
+
+** *spec.matchingCriteria.value*：（_オプション_）実行フックのフィルター値を識別する文字列または正規表現。
++
+YAMLの例：
+
++
+[source, yaml]
+----
+apiVersion: protect.trident.netapp.io/v1
+kind: ExecHook
+metadata:
+  name: example-hook-cr
+  namespace: my-app-namespace
+  annotations:
+    astra.netapp.io/astra-control-hook-source-id: /account/test/hookSource/id
+spec:
+  applicationRef: my-app-name
+  stage: Pre
+  action: Snapshot
+  enabled: true
+  hookSource: IyEvYmluL2Jhc2gKZWNobyAiZXhhbXBsZSBzY3JpcHQiCg==
+  timeout: 10
+  arguments:
+    - FirstExampleArg
+    - SecondExampleArg
+  matchingCriteria:
+    - type: containerName
+      value: mysql
+    - type: containerImage
+      value: bitnami/mysql
+    - type: podName
+      value: mysql
+    - type: namespaceName
+      value: mysql-a
+    - type: podLabel
+      value: app.kubernetes.io/component=primary
+    - type: podLabel
+      value: helm.sh/chart=mysql-10.1.0
+    - type: podLabel
+      value: deployment-type=production
+----
+
+
+. CR ファイルに正しい値を入力したら、CR を適用します：
++
+[source, console]
+----
+kubectl apply -f trident-protect-hook.yaml
+----
+
+
+--
+.CLI を使用する
+--
+.手順
+. 実行フックを作成し、括弧内の値を環境の情報に置き換えます。次に例を示します。
++
+[source, console]
+----
+tridentctl-protect create exechook <my_exec_hook_name> --action <action_type> --app <app_to_use_hook> --stage <pre_or_post_stage> --source-file <script-file> -n <application_namespace>
+----
+
+
+--
+====
+
+
+[[manually-run-an-execution-hook]]
+== 実行フックを手動で実行する
+
+テスト目的で、または失敗後にフックを手動で再実行する必要がある場合は、実行フックを手動で実行できます。実行フックを手動で実行するには、Owner、Admin、またはMemberの権限が必要です。
+
+実行フックを手動で実行するには、次の 2 つの基本的な手順を実行します：
+
+. リソースのバックアップを作成します。これはリソースを収集してそれらのバックアップを作成し、フックが実行される場所を決定します
+. バックアップに対して実行フックを実行する
+
+
+.ステップ1：リソースのバックアップを作成する
+[%collapsible]
+====
+[role="tabbed-block"]
+=====
+.CRを使用する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-resource-backup.yaml`という名前を付けます。
+. 以下の属性を Trident Protect 環境とクラスタ構成に合わせて設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.applicationRef*：（_必須_）リソース バックアップを作成するアプリケーションの Kubernetes 名。
+** *spec.appVaultRef*：（_必須_）バックアップコンテンツが保存されるAppVaultの名前。
+** *spec.appArchivePath*：AppVault内でバックアップコンテンツが保存されるパス。このパスを見つけるには、次のコマンドを使用できます：
++
+[source, console]
+----
+kubectl get backups <BACKUP_NAME> -n my-app-namespace -o jsonpath='{.status.appArchivePath}'
+----
++
+YAMLの例：
+
++
+[source, yaml]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: ResourceBackup
+metadata:
+  name: example-resource-backup
+spec:
+  applicationRef: my-app-name
+  appVaultRef: my-appvault-name
+  appArchivePath: example-resource-backup
+----
+
+
+. CR ファイルに正しい値を入力したら、CR を適用します：
++
+[source, console]
+----
+kubectl apply -f trident-protect-resource-backup.yaml
+----
+
+
+--
+.CLI を使用する
+--
+.手順
+. 括弧内の値を環境の情報に置き換えてバックアップを作成します。次に例を示します。
++
+[source, console]
+----
+tridentctl protect create resourcebackup <my_backup_name> --app <my_app_name> --appvault <my_appvault_name> -n <my_app_namespace> --app-archive-path <app_archive_path>
+----
+. バックアップのステータスを表示します。操作が完了するまで、この例のコマンドを繰り返し使用できます：
++
+[source, console]
+----
+tridentctl protect get resourcebackup -n <my_app_namespace> <my_backup_name>
+----
+. バックアップが成功したことを確認します：
++
+[source, console]
+----
+kubectl describe resourcebackup <my_backup_name>
+----
+
+
+--
+=====
+====
+.ステップ2：実行フックを実行する
+[%collapsible]
+====
+[role="tabbed-block"]
+=====
+.CRを使用する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-hook-run.yaml`という名前を付けます。
+. 以下の属性を Trident Protect 環境とクラスタ構成に合わせて設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.applicationRef*：（_必須_）この値が、手順 1 で作成した ResourceBackup CR のアプリケーション名と一致していることを確認してください。
+** *spec.appVaultRef*：（必須）この値が、手順1で作成したResourceBackup CRのappVaultRefと一致していることを確認してください。
+** *spec.appArchivePath*：この値が、手順1で作成したResourceBackup CRのappArchivePathと一致していることを確認してください。
++
+[source, console]
+----
+kubectl get backups <BACKUP_NAME> -n my-app-namespace -o jsonpath='{.status.appArchivePath}'
+----
+** *spec.action*：（_必須_）指定された実行フックフィルタが一致した場合に、実行フックが実行するアクションを示す文字列。可能な値：
++
+*** Snapshot
+*** バックアップ
+*** リストア
+*** フェイルオーバー
+
+
+** *spec.stage*：（_必須_）アクション中に実行フックを実行するステージを示す文字列。このフック実行では、他のステージのフックは実行されません。可能な値：
++
+*** プレ
+*** 投稿
++
+YAMLの例：
+
++
+[source, yaml]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: ExecHooksRun
+metadata:
+  name: example-hook-run
+spec:
+  applicationRef: my-app-name
+  appVaultRef: my-appvault-name
+  appArchivePath: example-resource-backup
+  stage: Post
+  action: Failover
+----
+
+
+
+
+. CR ファイルに正しい値を入力したら、CR を適用します：
++
+[source, console]
+----
+kubectl apply -f trident-protect-hook-run.yaml
+----
+
+
+--
+.CLI を使用する
+--
+.手順
+. 手動実行フックの実行リクエストを作成します：
++
+[source, console]
+----
+tridentctl protect create exechooksrun <my_exec_hook_run_name> -n <my_app_namespace> --action snapshot --stage <pre_or_post> --app <my_app_name> --appvault <my_appvault_name> --path <my_backup_name>
+----
+. 実行フックの実行ステータスを確認します。操作が完了するまでこのコマンドを繰り返し実行できます：
++
+[source, console]
+----
+tridentctl protect get exechooksrun -n <my_app_namespace> <my_exec_hook_run_name>
+----
+. 最終的な詳細とステータスを確認するには、exechooksrun オブジェクトを記述します：
++
+[source, console]
+----
+kubectl -n <my_app_namespace> describe exechooksrun <my_exec_hook_run_name>
+----
+
+
+--
+=====
+====

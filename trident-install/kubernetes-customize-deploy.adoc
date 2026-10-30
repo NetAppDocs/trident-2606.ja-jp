@@ -1,0 +1,586 @@
+---
+sidebar: sidebar 
+permalink: trident-install/kubernetes-customize-deploy.html 
+keywords: deploy, trident, methods, operator, tridentctl, helm, attributes, customize, tridentorchestrator, smb, windows 
+summary: 'Trident オペレータを使用すると、 `TridentOrchestrator` spec の属性を使用して Trident のインストール方法をカスタマイズできます。' 
+---
+= Tridentオペレータのインストールをカスタマイズ
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Trident オペレータを使用すると、 `TridentOrchestrator` spec の属性を使用して Trident のインストールをカスタマイズできます。 `TridentOrchestrator` 引数で許可される範囲を超えてインストールをカスタマイズする場合は、 `tridentctl` を使用して、必要に応じて変更できるカスタム YAML マニフェストを生成することを検討してください。
+
+
+
+[[understanding-controller-pods-and-node-pods]]
+== コントローラポッドとノードポッドについて
+
+Tridentは、クラスター内の各ワーカー ノード上で単一のコントローラー ポッドとノード ポッドとして実行されます。ノードポッドは、Tridentボリュームをマウントする可能性のあるホスト上で実行されている必要があります。
+
+Kuberneteslink:https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/["ノードセレクター"^]およびlink:https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/["tolerations と taints"^]は、ポッドを特定のノードまたは優先ノードで実行するように制限するために使用されます。`ControllerPlugin`および `NodePlugin`を使用して、制約とオーバーライドを指定できます。
+
+* コントローラー プラグインは、スナップショットやサイズ変更などのボリュームのプロビジョニングと管理を処理します。
+* ノード プラグインは、ストレージをノードに接続する処理を行います。
+
+
+
+
+[[configuration-options]]
+== 構成オプション
+
+
+WARNING: `spec.namespace`は `TridentOrchestrator`で指定され、Tridentがインストールされている名前空間を示します。このパラメータは*Tridentのインストール後は更新できません*。更新しようとすると、 `TridentOrchestrator`のステータスが `Failed`に変更されます。Tridentは名前空間間で移行することを意図していません。
+
+この表には `TridentOrchestrator`属性の詳細が記載されています。
+
+[cols="1,2,1"]
+|===
+| パラメータ | 概要 | デフォルト 
+
+
+| `namespace` | Tridentをインストールする名前空間 | `"default"` 
+
+
+| `debug` | Tridentのデバッグを有効にする | `false` 
+
+
+| `enableForceDetach` | `ontap-san`、 `ontap-san-economy`、 `ontap-nas`、および `ontap-nas-economy`のみ。Kubernetes Non-Graceful Node Shutdown（NGNS）と連携して、ノードが正常でなくなった場合に、マウントされたボリュームを持つワークロードを新しいノードに安全に移行する機能をクラスター管理者に付与します。詳細については、link:../trident-reco/force-detach.html["Tridentを使用したステートフルアプリケーションのフェイルオーバーの自動化"]を参照してください。 | `false` 
+
+
+| `windows` |  `true`に設定すると、Windows ワーカー ノードへのインストールが有効になります。 | `false` 
+
+
+| `cloudProvider`  a| 
+AKS クラスターでマネージド ID またはクラウド ID を使用する場合は `"Azure"`に設定します。 `"AWS"`に設定します（EKS クラスターでクラウド ID を使用する場合）。 `"GCP"`に設定します（GKE クラスターでクラウド ID を使用する場合）。
+| `""` 
+
+
+| `cloudIdentity`  a| 
+AKSクラスタでクラウドIDを使用する場合は、ワークロードID（"azure.workload.identity/client-id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx"）に設定します。EKSクラスタでクラウドIDを使用する場合は、AWS IAMロール（"'eks.amazonaws.com/role-arn: arn:aws:iam::123456:role/trident-role'"）に設定します。GKEクラスタでクラウドIDを使用する場合は、クラウドID（"'iam.gke.io/gcp-service-account: xxxx@mygcpproject.iam.gserviceaccount.com'"）に設定します。
+| `""` 
+
+
+| `IPv6` | IPv6経由でTridentをインストール | false 
+
+
+| `k8sTimeout`  a| 
+Kubernetes 操作のタイムアウト。
+
+
+NOTE:  `k8sTimeout`パラメータは、Tridentのインストールにのみ適用されます。
+| `180sec` 
+
+
+| `silenceAutosupport` | AutoSupport バンドルを NetApp に自動的に送信しない | `false` 
+
+
+| `autosupportImage` | Autosupport Telemetryのコンテナイメージ | `"netapp/trident-autosupport10"` 
+
+
+| `autosupportProxy` | Autosupport テレメトリを送信するためのプロキシのアドレス/ポート | `"http://proxy.example.com:8888"` 
+
+
+| `uninstall` | Tridentをアンインストールするために使用するフラグ | `false` 
+
+
+| `logFormat` | Tridentで使用するログ形式 [text,json] | `"text"` 
+
+
+| `tridentImage` | インストールする Trident イメージ | `"netapp/trident:26.06"` 
+
+
+| `imageRegistry` | 内部レジストリへのパス。形式は
+`<registry FQDN>[:port][/subpath]` | `"registry.k8s.io"` 
+
+
+| `kubeletDir` | ホスト上の kubelet ディレクトリへのパス | `"/var/lib/kubelet"` 
+
+
+| `wipeout` | Tridentを完全に削除するために削除するリソースのリスト |  
+
+
+| `imagePullSecrets` | 内部レジストリからイメージをプルするためのシークレット |  
+
+
+| `imagePullPolicy` | Trident オペレータのイメージプルポリシーを設定します。有効な値は次のとおりです：
+`Always` 常にイメージをプルします。
+`IfNotPresent` ノード上にイメージがまだ存在しない場合にのみイメージをプルします。
+`Never` イメージを決してプルしません。 | `IfNotPresent` 
+
+
+| `controllerPluginNodeSelector` | ポッドの追加ノードセレクター。 `pod.spec.nodeSelector`と同じ形式に従います。 | デフォルトなし；オプション 
+
+
+| `controllerPluginTolerations` | ポッドの Kubernetes 許容値をオーバーライドします。 `pod.spec.Tolerations`と同じ形式に従います。 | デフォルトなし；オプション 
+
+
+| `nodePluginNodeSelector` | ポッドの追加ノードセレクター。 `pod.spec.nodeSelector`と同じ形式に従います。 | デフォルトなし；オプション 
+
+
+| `nodePluginTolerations` | ポッドの Kubernetes 許容値をオーバーライドします。 `pod.spec.Tolerations`と同じ形式に従います。 | デフォルトなし；オプション 
+
+
+| `nodePrep`  a| 
+Tridentが指定されたデータストレージ プロトコルを使用してボリュームを管理するために、Kubernetesクラスタのノードを準備できるようにします。*現在、 `iscsi`がサポートされている唯一の値です。*
+
+
+NOTE: OpenShift 4.19 以降、この機能でサポートされる Trident の最小バージョンは 25.06.1 です。
+|  
+
+
+| `k8sAPIQPS`  a| 
+Kubernetes API サーバーと通信するときにコントローラーが使用する 1 秒あたりのクエリ数（QPS）の制限。バースト値は QPS 値に基づいて自動的に設定されます。
+| `100`；オプション 
+
+
+| `enableConcurrency`  a| 
+スループット向上のために Trident コントローラの同時操作を有効にします。サポートされているドライバーの詳細については、リンク先を参照してください：https://docs.netapp.com/us-en/trident/trident-use/controller-scalability.html#controller-scalability[コントローラーのスケーラビリティに関するドキュメント]
+| `resources` 
+
+
+ a| 
+Trident コントローラーとノード ポッドの Kubernetes リソース制限とリクエストを設定します。Kubernetes でのリソース割り当てを管理するために、各コンテナとサイドカーの CPU とメモリを設定できます。
+
+リソース要求と制限の設定の詳細については、link:https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/["Pod と Container のリソース管理"^]を参照してください。
+
+[WARNING]
+====
+* コンテナまたはフィールドの名前を変更しないでください。
+* インデントを変更しないでください。YAML インデントは適切な解析に重要です。
+
+
+====
+[NOTE]
+====
+* デフォルトでは制限は適用されません。リクエストのみにデフォルト値があり、指定されていない場合は自動的に適用されます。
+* コンテナ名は、ポッド仕様に表示されるとおりにリストされます。
+* サイドカーは各メイン コンテナの下にリストされます。
+* TORC `status.CurrentInstallationParams`フィールドを確認して、現在適用されている値を表示します。
+
+
+==== a| 
+[source, yaml]
+----
+resources:
+  controller:
+    trident-main:
+      requests:
+        cpu: 10m
+        memory: 80Mi
+      limits:
+          cpu:
+          memory:
+    csi-provisioner:
+      requests:
+        cpu: 2m
+        memory: 20Mi
+      limits:
+        cpu:
+        memory:
+    csi-attacher:
+      requests:
+        cpu: 2m
+        memory: 20Mi
+      limits:
+        cpu:
+        memory:
+    csi-resizer:
+      requests:
+        cpu: 3m
+        memory: 20Mi
+      limits:
+        cpu:
+        memory:
+    csi-snapshotter:
+      requests:
+        cpu: 2m
+        memory: 20Mi
+      limits:
+        cpu:
+        memory:
+    trident-autosupport:
+      requests:
+        cpu: 1m
+        memory: 30Mi
+      limits:
+        cpu:
+        memory:
+  node:
+    linux:
+      trident-main:
+        requests:
+          cpu: 10m
+          memory: 60Mi
+        limits:
+          cpu:
+          memory:
+      node-driver-registrar:
+        requests:
+          cpu: 1m
+          memory: 10Mi
+        limits:
+          cpu:
+          memory:
+    windows:
+      trident-main:
+        requests:
+          cpu: 6m
+          memory: 40Mi
+        limits:
+          cpu:
+          memory:
+      node-driver-registrar:
+        requests:
+          cpu: 6m
+          memory: 40Mi
+        limits:
+          cpu:
+          memory:
+      liveness-probe:
+        requests:
+          cpu: 2m
+          memory: 40Mi
+        limits:
+          cpu:
+          memory:
+----| `httpsMetrics` 
+
+
+| Prometheus メトリック エンドポイントに対して HTTPS を有効にします。 | false | `hostNetwork` 
+|===
+
+NOTE: ポッドパラメータのフォーマットの詳細については、link:https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/["Pod をノードに割り当てる"^]を参照してください。
+
+
+
+[[sample-configurations]]
+== サンプル構成
+
+<<構成オプション>>の属性を使用して `TridentOrchestrator`を定義し、インストールをカスタマイズできます。
+
+.基本的なカスタム設定
+[%collapsible]
+====
+この例は、 `cat deploy/crds/tridentorchestrator_cr_imagepullsecrets.yaml`コマンドの実行後に作成されたもので、基本的なカスタム インストールを表します：
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  debug: true
+  namespace: trident
+  imagePullSecrets:
+  - thisisasecret
+----
+====
+.ノードセレクタ
+[%collapsible]
+====
+この例では、ノードセレクターを使用してTridentをインストールします。
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  debug: true
+  namespace: trident
+  controllerPluginNodeSelector:
+    nodetype: master
+  nodePluginNodeSelector:
+    storage: netapp
+----
+====
+.Windows ワーカーノード
+[%collapsible]
+====
+この例は、 `cat deploy/crds/tridentorchestrator_cr.yaml`コマンドの実行後に作成され、Windows ワーカー ノードに Trident をインストールします。
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  debug: true
+  namespace: trident
+  windows: true
+----
+====
+.AKS クラスタ上の管理対象 ID
+[%collapsible]
+====
+この例では、AKS クラスターでマネージド ID を有効にするために Trident をインストールします。
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  debug: true
+  namespace: trident
+  cloudProvider: "Azure"
+----
+====
+.AKS クラスタのクラウド ID
+[%collapsible]
+====
+この例では、AKS クラスター上のクラウド ID で使用するために Trident をインストールします。
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  debug: true
+  namespace: trident
+  cloudProvider: "Azure"
+  cloudIdentity: 'azure.workload.identity/client-id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx'
+
+----
+====
+.EKS クラスタのクラウド ID
+[%collapsible]
+====
+この例では、AKS クラスター上のクラウド ID で使用するために Trident をインストールします。
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  debug: true
+  namespace: trident
+  cloudProvider: "AWS"
+  cloudIdentity: "'eks.amazonaws.com/role-arn: arn:aws:iam::123456:role/trident-role'"
+----
+====
+.GKE のクラウド ID
+[%collapsible]
+====
+この例では、GKE クラスタ上のクラウド ID で使用するために Trident をインストールします。
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentBackendConfig
+metadata:
+  name: backend-tbc-gcp-gcnv
+spec:
+  version: 1
+  storageDriverName: google-cloud-netapp-volumes
+  projectNumber: '012345678901'
+  network: gcnv-network
+  location: us-west2
+  serviceLevel: Premium
+  storagePool: pool-premium1
+----
+====
+.TridentコントローラーとTrident Linuxノードポッド用のKubernetesリソースリクエストと制限の設定
+[%collapsible]
+====
+この例では、TridentコントローラーとTrident Linuxノードポッドに対するKubernetesリソースリクエストと制限を設定します。
+
+
+WARNING: *免責事項*：この例で示されている要求値と制限値は、デモンストレーションのみを目的としています。環境とワークロードの要件に基づいてこれらの値を調整してください。
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  debug: true
+  namespace: trident
+  imagePullSecrets:
+  - thisisasecret
+  resources:
+    controller:
+      trident-main:
+        requests:
+          cpu: 10m
+          memory: 80Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+      # sidecars
+      csi-provisioner:
+        requests:
+          cpu: 2m
+          memory: 20Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      csi-attacher:
+        requests:
+          cpu: 2m
+          memory: 20Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      csi-resizer:
+        requests:
+          cpu: 3m
+          memory: 20Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      csi-snapshotter:
+        requests:
+          cpu: 2m
+          memory: 20Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      trident-autosupport:
+        requests:
+          cpu: 1m
+          memory: 30Mi
+        limits:
+          cpu: 50m
+          memory: 128Mi
+    node:
+      linux:
+        trident-main:
+          requests:
+            cpu: 10m
+            memory: 60Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        # sidecars
+        node-driver-registrar:
+          requests:
+            cpu: 1m
+            memory: 10Mi
+          limits:
+            cpu: 50m
+            memory: 32Mi
+
+----
+====
+.Kubernetes のリソースリクエストと制限の設定（Trident コントローラーと Trident Windows および Linux ノードポッド）
+[%collapsible]
+====
+この例では、TridentコントローラーとTrident WindowsおよびLinuxノードポッドのKubernetesリソースリクエストと制限を設定します。
+
+
+WARNING: *免責事項*：この例で示されている要求値と制限値は、デモンストレーションのみを目的としています。環境とワークロードの要件に基づいてこれらの値を調整してください。
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  debug: true
+  namespace: trident
+  imagePullSecrets:
+  - thisisasecret
+  windows: true
+  resources:
+    controller:
+      trident-main:
+        requests:
+          cpu: 10m
+          memory: 80Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+        # sidecars
+      csi-provisioner:
+        requests:
+          cpu: 2m
+          memory: 20Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      csi-attacher:
+        requests:
+          cpu: 2m
+          memory: 20Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      csi-resizer:
+        requests:
+          cpu: 3m
+          memory: 20Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      csi-snapshotter:
+        requests:
+          cpu: 2m
+          memory: 20Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      trident-autosupport:
+        requests:
+          cpu: 1m
+          memory: 30Mi
+        limits:
+          cpu: 50m
+          memory: 128Mi
+    node:
+      linux:
+        trident-main:
+          requests:
+            cpu: 10m
+            memory: 60Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        # sidecars
+        node-driver-registrar:
+          requests:
+            cpu: 1m
+            memory: 10Mi
+          limits:
+            cpu: 50m
+            memory: 32Mi
+      windows:
+        trident-main:
+          requests:
+            cpu: 6m
+            memory: 40Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        # sidecars
+        node-driver-registrar:
+          requests:
+            cpu: 6m
+            memory: 40Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+        liveness-probe:
+          requests:
+            cpu: 2m
+            memory: 40Mi
+          limits:
+            cpu: 50m
+            memory: 64Mi
+
+----
+====

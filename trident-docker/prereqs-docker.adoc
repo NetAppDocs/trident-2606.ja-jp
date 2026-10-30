@@ -1,0 +1,270 @@
+---
+sidebar: sidebar 
+permalink: trident-docker/prereqs-docker.html 
+keywords: deploy, Trident, docker, trident for docker, nfs, iscsi, protcol, nfs protocol, iscsi protocol, configure host, host config, nvme tcp, fc, nvme 
+summary: Tridentを導入する前に、ホストに必要なプロトコルの前提条件をインストールして設定する必要があります。 
+---
+= 導入の前提条件
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentを導入する前に、ホストに必要なプロトコルの前提条件をインストールして設定する必要があります。
+
+
+
+[[verify-the-requirements]]
+== 要件を確認する
+
+* 導入がすべてのlink:../trident-get-started/requirements.html["要件"]を満たしていることを確認します。
+* サポートされているバージョンのDockerがインストールされていることを確認します。Dockerのバージョンが古い場合は、 https://docs.docker.com/engine/install/["インストールまたはアップデートする"^]。
++
+[source, console]
+----
+docker --version
+----
+* プロトコルの前提条件がホストにインストールされ、設定されていることを確認します。
+
+
+
+
+[[nfs-tools]]
+=== NFSツール
+
+オペレーティングシステムのコマンドを使用してNFSツールをインストールします。
+
+[role="tabbed-block"]
+====
+.RHEL 8以降
+--
+[source, console]
+----
+sudo yum install -y nfs-utils
+----
+--
+.Ubuntu
+--
+[source, console]
+----
+sudo apt-get install -y nfs-common
+----
+--
+====
+
+WARNING: ボリュームをコンテナに接続するときに障害が発生しないように、NFSツールをインストールした後、ワーカーノードを再起動します。
+
+
+
+[[iscsi-tools]]
+=== iSCSIツール
+
+オペレーティングシステムのコマンドを使用してiSCSIツールをインストールします。
+
+[role="tabbed-block"]
+====
+.RHEL 8以降
+--
+. 次のシステムパッケージをインストールします：
++
+[source, console]
+----
+sudo yum install -y lsscsi iscsi-initiator-utils sg3_utils device-mapper-multipath
+----
+. iscsi-initiator-utils のバージョンが 6.2.0.874-2.el7 以降であることを確認します：
++
+[source, console]
+----
+rpm -q iscsi-initiator-utils
+----
+. スキャンを手動に設定します：
++
+[source, console]
+----
+sudo sed -i 's/^\(node.session.scan\).*/\1 = manual/' /etc/iscsi/iscsid.conf
+----
+. マルチパスを有効にする：
++
+[source, console]
+----
+sudo mpathconf --enable --with_multipathd y --find_multipaths n
+----
++
+
+NOTE:  `etc/multipath.conf`に `find_multipaths no`が `defaults`の下に含まれていることを確認します。
+
+.  `iscsid`と `multipathd`が実行されていることを確認します：
++
+[source, console]
+----
+sudo systemctl enable --now iscsid multipathd
+----
+. 有効化して起動 `iscsi`：
++
+[source, console]
+----
+sudo systemctl enable --now iscsi
+----
+
+
+--
+.Ubuntu
+--
+. 次のシステムパッケージをインストールします：
++
+[source, console]
+----
+sudo apt-get install -y open-iscsi lsscsi sg3-utils multipath-tools scsitools
+----
+. open-iscsi のバージョンが 2.0.874-5ubuntu2.10 以降（bionic の場合）または 2.0.874-7.1ubuntu6.1 以降（focal の場合）であることを確認します：
++
+[source, console]
+----
+dpkg -l open-iscsi
+----
+. スキャンを手動に設定します：
++
+[source, console]
+----
+sudo sed -i 's/^\(node.session.scan\).*/\1 = manual/' /etc/iscsi/iscsid.conf
+----
+. マルチパスを有効にする：
++
+[source, console]
+----
+sudo tee /etc/multipath.conf <<-EOF
+defaults {
+    user_friendly_names yes
+    find_multipaths no
+}
+EOF
+sudo systemctl enable --now multipath-tools.service
+sudo service multipath-tools restart
+----
++
+
+NOTE:  `etc/multipath.conf`に `find_multipaths no`が `defaults`の下に含まれていることを確認します。
+
+.  `open-iscsi`と `multipath-tools`が有効になっていて実行中であることを確認します：
++
+[source, console]
+----
+sudo systemctl status multipath-tools
+sudo systemctl enable --now open-iscsi.service
+sudo systemctl status open-iscsi
+----
+
+
+--
+====
+
+
+[[nvme-tools]]
+== NVMeツール
+
+オペレーティングシステムのコマンドを使用してNVMeツールをインストールします。
+
+[NOTE]
+====
+* NVMe には RHEL 9 以降が必要です。
+* Kubernetes ノードのカーネルバージョンが古すぎる場合、またはカーネルバージョンで NVMe パッケージが利用できない場合は、ノードのカーネルバージョンを NVMe パッケージを含むバージョンに更新する必要がある場合があります。
+
+
+====
+[role="tabbed-block"]
+====
+.RHEL 9
+--
+[source, console]
+----
+sudo yum install nvme-cli
+sudo yum install linux-modules-extra-$(uname -r)
+sudo modprobe nvme-tcp
+----
+--
+.Ubuntu
+--
+[source, console]
+----
+sudo apt install nvme-cli
+sudo apt -y install linux-modules-extra-$(uname -r)
+sudo modprobe nvme-tcp
+----
+--
+====
+
+
+[[fc-tools]]
+== FCツール
+
+オペレーティングシステムのコマンドを使用してFCツールをインストールします。
+
+* FC PVを使用するRHEL／Red Hat Enterprise Linux CoreOS（RHCOS）上のワーカーノードを利用する場合、インラインスペースリクレームを実行するために、 `discard` StorageClassでmountOptionを指定してください。 https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/managing_file_systems/discarding-unused-blocks_managing-file-systems["Red Hat ドキュメント"^]を参照してください。
+
+
+[role="tabbed-block"]
+====
+.RHEL 8以降
+--
+. 次のシステムパッケージをインストールします：
++
+[source, console]
+----
+sudo yum install -y lsscsi device-mapper-multipath
+----
+. マルチパスを有効にする：
++
+[source, console]
+----
+sudo mpathconf --enable --with_multipathd y --find_multipaths n
+----
++
+
+NOTE:  `etc/multipath.conf`に `find_multipaths no`が `defaults`の下に含まれていることを確認します。
+
+.  `multipathd`が実行されていることを確認します：
++
+[source, console]
+----
+sudo systemctl enable --now multipathd
+----
+
+
+--
+.Ubuntu
+--
+. 次のシステムパッケージをインストールします：
++
+[source, console]
+----
+sudo apt-get install -y lsscsi sg3-utils multipath-tools scsitools
+----
+. マルチパスを有効にする：
++
+[source, console]
+----
+sudo tee /etc/multipath.conf <<-EOF
+defaults {
+    user_friendly_names yes
+    find_multipaths no
+}
+EOF
+sudo systemctl enable --now multipath-tools.service
+sudo service multipath-tools restart
+----
++
+
+NOTE:  `etc/multipath.conf`に `find_multipaths no`が `defaults`の下に含まれていることを確認します。
+
+.  `multipath-tools`が有効になっていて実行中であることを確認します：
++
+[source, console]
+----
+sudo systemctl status multipath-tools
+----
+
+
+--
+====

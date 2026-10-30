@@ -1,0 +1,181 @@
+---
+sidebar: sidebar 
+permalink: trident-use/volume-share.html 
+keywords: volref, volume reference, share, pvc, pv, nfs, namespace, cvna, cross-namespace, sharing 
+summary: Tridentを使用すると、プライマリ名前空間にボリュームを作成し、それを1つ以上のセカンダリ名前空間で共有できます。 
+---
+= 名前空間をまたいでTrident NFSボリュームを共有する
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentを使用すると、プライマリ名前空間にボリュームを作成し、それを1つ以上のセカンダリ名前空間で共有できます。
+
+
+
+[[features]]
+== 機能
+
+TridentVolumeReference CR を使用すると、ReadWriteMany（RWX）NFS ボリュームを 1 つ以上の Kubernetes 名前空間にわたって安全に共有できます。この Kubernetes ネイティブソリューションには、次の利点があります：
+
+* セキュリティを確保するための複数レベルのアクセス制御
+* すべての Trident NFS ボリュームドライバーに対応
+* tridentctl やその他の非ネイティブ Kubernetes 機能に依存しない
+
+
+この図は、2 つの Kubernetes 名前空間間での NFS ボリュームの共有を示しています。
+
+image::cross-namespace-sharing.png[ネームスペース間共有の概念図。]
+
+
+
+[[quick-start]]
+== クイック スタート
+
+わずか数ステップで NFS ボリューム共有を設定できます。
+
+.image:https://raw.githubusercontent.com/NetAppDocs/common/main/media/number-1.png["1"] ボリュームを共有するようにソース PVC を設定する
+[role="quick-margin-para"]
+ソース名前空間の所有者は、ソース PVC 内のデータにアクセスする権限を付与します。
+
+.image:https://raw.githubusercontent.com/NetAppDocs/common/main/media/number-2.png["2"] 宛先ネームスペースに CR を作成する権限を付与します
+[role="quick-margin-para"]
+クラスタ管理者は、宛先名前空間の所有者にTridentVolumeReference CRを作成する権限を付与します。
+
+.image:https://raw.githubusercontent.com/NetAppDocs/common/main/media/number-3.png["3つ"] 宛先名前空間にTridentVolumeReferenceを作成する
+[role="quick-margin-para"]
+宛先名前空間の所有者は、ソースPVCを参照するTridentVolumeReference CRを作成します。
+
+.image:https://raw.githubusercontent.com/NetAppDocs/common/main/media/number-4.png["4"] 宛先ネームスペースに従属PVCを作成する
+[role="quick-margin-para"]
+宛先ネームスペースの所有者は、ソース PVC のデータソースを使用するために従属 PVC を作成します。
+
+
+
+[[configure-the-source-and-destination-namespaces]]
+== ソースネームスペースと宛先ネームスペースを設定する
+
+セキュリティを確保するには、名前空間間の共有には、ソース名前空間の所有者、クラスター管理者、および宛先名前空間の所有者による連携とアクションが必要です。各ステップでユーザーロールが指定されます。
+
+.手順
+. ＊ソースネームスペースの所有者＊：ソースネームスペースでPVC(`pvc1`を作成し、(`namespace2`宛てに共有する権限を付与するために、 `shareToNamespace`アノテーションを使用します。
++
+[source, yaml]
+----
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pvc1
+  namespace: namespace1
+  annotations:
+    trident.netapp.io/shareToNamespace: namespace2
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: trident-csi
+  resources:
+    requests:
+      storage: 100Gi
+----
++
+Trident は PV とそのバックエンド NFS ストレージボリュームを作成します。
+
++
+[NOTE]
+====
+** コンマ区切りのリストを使用して、PVC を複数の名前空間で共有できます。たとえば、 `trident.netapp.io/shareToNamespace: namespace2,namespace3,namespace4`。
+** すべての名前空間に共有するには、 `*`を使用します。例： `trident.netapp.io/shareToNamespace: *`
+** PVCを更新して、 `shareToNamespace`アノテーションをいつでも含めることができます。
+
+
+====
+. *クラスタ管理者：*適切なRBACが設定されていることを確認し、宛先ネームスペースの所有者が宛先ネームスペースにTridentVolumeReference CRを作成する権限を付与します。
+. *宛先名前空間の所有者：* ソース名前空間を参照するTridentVolumeReference CRを宛先名前空間に作成します `pvc1`。
++
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentVolumeReference
+metadata:
+  name: my-first-tvr
+  namespace: namespace2
+spec:
+  pvcName: pvc1
+  pvcNamespace: namespace1
+----
+. *宛先ネームスペースの所有者：* 宛先ネームスペース(`namespace2`）でPVC(`pvc2`）を作成し、ソースPVCを指定するために `shareFromPVC`アノテーションを使用します。
++
+[source, yaml]
+----
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  annotations:
+    trident.netapp.io/shareFromPVC: namespace1/pvc1
+  name: pvc2
+  namespace: namespace2
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: trident-csi
+  resources:
+    requests:
+      storage: 100Gi
+----
++
+
+NOTE: デスティネーション PVC のサイズは、ソース PVC のサイズ以下である必要があります。
+
+
+
+.結果
+Tridentは、デスティネーションPVCの `shareFromPVC`アノテーションを読み取り、デスティネーションPVを、独自のストレージリソースを持たず、ソースPVを指してソースPVストレージリソースを共有する従属ボリュームとして作成します。デスティネーションPVCとPVは正常にバインドされているように見えます。
+
+
+
+[[delete-a-shared-volume]]
+== 共有ボリュームを削除する
+
+複数の名前空間間で共有されているボリュームを削除できます。Tridentは、ソース名前空間のボリュームへのアクセスを削除し、ボリュームを共有する他の名前空間へのアクセスを維持します。ボリュームを参照するすべての名前空間が削除されると、Tridentはボリュームを削除します。
+
+
+
+[[use-tridentctl-get-to-query-subordinate-volumes]]
+==  `tridentctl get`を使用して従属ボリュームを照会する
+
+[`tridentctl`ユーティリティを使用して、 `get`コマンドを実行すると、従属ボリュームを取得できます。詳細については、link：../trident-reference/trident-cl.html[`tridentctl`コマンドとオプション]を参照してください。
+
+[listing]
+----
+Usage:
+  tridentctl get [option]
+----
+フラグ：
+
+* ``-h, --help`：ボリュームのヘルプ。
+* `--parentOfSubordinate string`：クエリを従属ソースボリュームに制限します。
+* `--subordinateOf string`：ボリュームの下位にクエリを制限します。
+
+
+
+
+[[limitations]]
+== 制限事項
+
+* Tridentは、宛先ネームスペースが共有ボリュームに書き込むのを防ぐことはできません。共有ボリュームのデータが上書きされないようにするには、ファイルロックまたはその他のプロセスを使用する必要があります。
+* ソースPVCへのアクセスを取り消すには、 `shareToNamespace`または `shareFromNamespace`アノテーションを削除するか、 `TridentVolumeReference`CRを削除しても取り消すことはできません。アクセスを取り消すには、従属PVCを削除する必要があります。
+* 従属ボリュームではスナップショット、クローン、ミラーリングは実行できません。
+
+
+
+
+[[for-more-information]]
+== 詳細情報
+
+クロスネームスペースボリュームアクセスの詳細については、次を参照してください：
+
+* link:https://media.netapp.com/page/9071d19d-1438-5ed3-a7aa-ea4d73c28b7f/solutions-products["NetAppTV"^]でデモをご覧ください。
+

@@ -1,0 +1,343 @@
+---
+sidebar: sidebar 
+permalink: trident-reco/storage-config-best-practices.html 
+keywords: kubernetes, clusters, nodes, components, master, compute 
+summary: Kubernetes クラスタは通常、2 種類のノードで構成され、それぞれが異なる機能を担当します。 
+---
+= Tridentストレージ構成のベストプラクティス
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+NetApp ポートフォリオの各ストレージプラットフォームには、コンテナ化されているかどうかに関係なく、アプリケーションに役立つ独自の機能があります。
+
+
+
+[[platform-overview]]
+== プラットフォームの概要
+
+TridentはONTAPおよびElementと連携します。すべてのアプリケーションやシナリオに他のプラットフォームよりも適したプラットフォームは存在しませんが、プラットフォームを選択する際には、アプリケーションのニーズとデバイスを管理するチームを考慮する必要があります。
+
+利用しているプロトコルに応じて、ホスト オペレーティング システムのベースライン ベスト プラクティスに従う必要があります。オプションとして、利用可能な場合は、バックエンド、ストレージ クラス、および PVC 設定にアプリケーションのベスト プラクティスを組み込んで、特定のアプリケーションのストレージを最適化することを検討することもできます。
+
+
+
+[[ontap-and-cloud-volumes-ontap-best-practices]]
+== ONTAPおよびCloud Volumes ONTAPのベストプラクティス
+
+Trident 向けに ONTAP および Cloud Volumes ONTAP を設定する際のベストプラクティスを学習します。
+
+以下の推奨事項は、Tridentによって動的にプロビジョニングされるボリュームを消費するコンテナ化されたワークロード向けにONTAPを設定するためのガイドラインです。それぞれの推奨事項について、お客様の環境における適切性を考慮して評価する必要があります。
+
+
+
+[[use-svms-dedicated-to-trident]]
+=== Trident専用のSVMを使用する
+
+Storage Virtual Machine（SVM）は、ONTAPシステム上のテナント間の分離と管理の分離を実現します。SVMをアプリケーション専用にすることで、権限の委任が可能になり、リソース消費を制限するためのベストプラクティスを適用できるようになります。
+
+SVM の管理にはいくつかのオプションがあります：
+
+* バックエンド構成でクラスタ管理インターフェイスを指定し、適切なクレデンシャルとともに SVM 名を指定します。
+* ONTAP System Manager または CLI を使用して、 SVM 専用の管理インターフェイスを作成します。
+* 管理ロールを NFS データインターフェイスと共有します。
+
+
+いずれの場合も、インターフェイスはDNSに登録され、Tridentの設定時にDNS名を使用する必要があります。これにより、ネットワークIDの保持を使用しないSVM-DRなど、一部のDRシナリオが容易になります。
+
+SVM に専用の管理 LIF を使用するか、共有の管理 LIF を使用するかという優先順位はありませんが、ネットワーク セキュリティ ポリシーが選択したアプローチと一致していることを確認する必要があります。いずれにせよ、管理 LIF は DNS 経由でアクセスできるようにして、 https://docs.netapp.com/ontap-9/topic/com.netapp.doc.pow-dap/GUID-B9E36563-1C7A-48F5-A9FF-1578B99AADA9.html["SVM-DR"^]Trident と組み合わせて使用する場合に最大限の柔軟性を実現する必要があります。
+
+
+
+[[limit-the-maximum-volume-count]]
+=== 最大ボリューム数を制限する
+
+ONTAP ストレージシステムには最大ボリューム数があり、ソフトウェアのバージョンとハードウェア プラットフォームによって異なります。特定のプラットフォームと ONTAP バージョンの正確な制限を確認するには、 https://hwu.netapp.com/["NetApp Hardware Universe"^]を参照してください。ボリューム数が上限に達すると、Trident だけでなく、すべてのストレージ要求に対してプロビジョニング操作が失敗します。
+
+Tridentの `ontap-nas`および `ontap-san`ドライバーは、作成される各Kubernetes永続ボリューム（PV）に対してFlexVolumeをプロビジョニングします。 `ontap-nas-economy`ドライバーは、200PVごとに約1つのFlexVolumeを作成します（50～300の間で設定可能）。 `ontap-san-economy`ドライバーは、100PVごとに約1つのFlexVolumeを作成します（50～200の間で設定可能）。Tridentがストレージシステム上の使用可能なボリュームをすべて消費しないようにするには、SVMに制限を設定する必要があります。コマンドラインから次のように実行できます：
+
+[listing]
+----
+vserver modify -vserver <svm_name> -max-volumes <num_of_volumes>
+----
+ `max-volumes`の値は、環境に固有のいくつかの基準によって異なります：
+
+* ONTAP クラスタ内の既存のボリューム数
+* Trident 以外のアプリケーション用にプロビジョニングする予定のボリュームの数
+* Kubernetes アプリケーションで使用される永続的ボリュームの数
+
+
+この `max-volumes`値は、ONTAP クラスタ内のすべてのノードにプロビジョニングされたボリュームの合計であり、個々の ONTAP ノードのものではありません。その結果、ONTAP クラスタノードによっては、Trident でプロビジョニングされたボリュームが他のノードよりもはるかに多い場合や少ない場合があります。
+
+たとえば、2ノードのONTAPクラスタには、最大2000個のFlexVolボリュームをホストする機能があります。最大ボリューム数を1250に設定することは非常に妥当に思えます。ただし、1つのノードからの https://library.netapp.com/ecmdocs/ECMP1368859/html/GUID-3AC7685D-B150-4C1F-A408-5ECEB3FF0011.html["アグリゲート"^]のみがSVMに割り当てられている場合、または1つのノードから割り当てられたアグリゲートをプロビジョニングできない場合（容量不足など）、もう一方のノードがすべてのTridentプロビジョニングボリュームのターゲットになります。つまり、 `max-volumes`の値に達する前に、そのノードのボリューム制限に達する可能性があり、その結果、Tridentとそのノードを使用する他のボリューム操作の両方に影響を与えます。*この状況を回避するには、クラスタ内の各ノードからのアグリゲートが、Tridentで使用されるSVMに同数割り当てられるようにします。*
+
+
+
+[[clone-a-volume]]
+=== ボリュームをクローニングする
+
+NetApp Tridentは、 `ontap-nas`、 `ontap-san`、および `solidfire-san`ストレージドライバーを使用する場合、ボリュームのクローン作成をサポートします。 `ontap-nas-flexgroup`または `ontap-nas-economy`ドライバーを使用する場合、クローン作成はサポートされません。既存のボリュームから新しいボリュームを作成すると、新しいスナップショットが作成されます。
+
+
+WARNING: 異なるStorageClassに関連付けられたPVCの複製は避けてください。互換性を確保し、予期しない動作を防ぐために、同じStorageClass内でクローン操作を実行してください。
+
+
+
+[[limit-the-maximum-size-of-volumes-created-by-trident]]
+=== Tridentで作成されるボリュームの最大サイズを制限する
+
+Tridentで作成できるボリュームの最大サイズを設定するには、 `limitVolumeSize`パラメータを `backend.json`定義で使用します。
+
+ストレージ アレイでのボリューム サイズの制御に加えて、Kubernetes の機能も活用する必要があります。
+
+
+
+[[limit-the-maximum-size-of-flexvols-created-by-trident]]
+=== Tridentによって作成されるFlexVolsの最大サイズを制限する
+
+ontap-san-economyドライバおよびontap-nas-economyドライバのプールとして使用されるFlexVolsの最大サイズを設定するには、 `limitVolumePoolSize`パラメータを `backend.json`定義で使用してください。
+
+
+
+[[configure-trident-to-use-bidirectional-chap]]
+=== 双方向CHAPを使用するようにTridentを設定
+
+バックエンド定義で CHAP イニシエーターとターゲットのユーザー名とパスワードを指定し、Trident で SVM の CHAP を有効にすることができます。バックエンド構成で `useCHAP`パラメータを使用すると、Trident は CHAP を使用して ONTAP バックエンドの iSCSI 接続を認証します。
+
+
+
+[[create-and-use-an-svm-qos-policy]]
+=== SVM QoSポリシーを作成して使用する
+
+SVMに適用されるONTAP QoSポリシーを活用することで、Tridentでプロビジョニングされたボリュームが消費できるIOPSの数を制限します。これにより、 http://docs.netapp.com/ontap-9/topic/com.netapp.doc.pow-perf-mon/GUID-77DF9BAF-4ED7-43F6-AECE-95DFB0680D2F.html?cp=7_1_2_1_2["いじめを防ぐ"^]または制御不能なコンテナがTrident SVM外部のワークロードに影響を与えるのを防ぎます。
+
+SVM の QoS ポリシーは数ステップで作成できます。最も正確な情報については、お使いのバージョンの ONTAP のドキュメントを参照してください。以下の例では、SVM で使用可能な合計 IOPS を 5000 に制限する QoS ポリシーを作成します。
+
+[listing]
+----
+# create the policy group for the SVM
+qos policy-group create -policy-group <policy_name> -vserver <svm_name> -max-throughput 5000iops
+
+# assign the policy group to the SVM, note this will not work
+# if volumes or files in the SVM have existing QoS policies
+vserver modify -vserver <svm_name> -qos-policy-group <policy_name>
+----
+さらに、ONTAP のバージョンでサポートされている場合は、コンテナ化されたワークロードへのスループット量を保証するために、QoS 最小値の使用を検討できます。アダプティブ QoS は SVM レベルのポリシーと互換性がありません。
+
+コンテナ化されたワークロード専用の IOPS の数は、さまざまな側面によって異なります。とりわけ、次のようなものがあります：
+
+* ストレージ アレイを使用するその他のワークロード。Kubernetes デプロイメントに関連しない他のワークロードがストレージ リソースを利用している場合は、それらのワークロードが誤って悪影響を受けないように注意する必要があります。
+* コンテナ内で実行されると予想されるワークロード。高い IOPS 要件を持つワークロードがコンテナ内で実行される場合、低い QoS ポリシーではエクスペリエンスが悪くなります。
+
+
+SVM レベルで割り当てられた QoS ポリシーにより、SVM にプロビジョニングされたすべてのボリュームが同じ IOPS プールを共有することになるということを覚えておくことが重要です。コンテナ化されたアプリケーションの 1 つまたは少数に高い IOPS 要件がある場合、他のコンテナ化されたワークロードに対して脅威となる可能性があります。このような場合は、外部自動化を使用してボリュームごとの QoS ポリシーを割り当てることを検討してください。
+
+
+IMPORTANT: QoSポリシーグループをSVMに割り当てる必要があるのは、ONTAPバージョンが9.8より前の場合*のみ*です。
+
+
+
+[[create-qos-policy-groups-for-trident]]
+=== Trident用のQoSポリシーグループを作成する
+
+サービス品質（QoS）は、競合するワークロードによって重要なワークロードのパフォーマンスが低下しないことを保証します。ONTAP QoS ポリシーグループはボリュームの QoS オプションを提供し、ユーザーが 1 つ以上のワークロードのスループット上限を定義できるようにします。QoS の詳細については、 https://docs.netapp.com/ontap-9/topic/com.netapp.doc.pow-perf-mon/GUID-77DF9BAF-4ED7-43F6-AECE-95DFB0680D2F.html["QoSによるスループットの保証"^]を参照してください。バックエンドまたはストレージプールで QoS ポリシーグループを指定すると、そのプールまたはバックエンドで作成された各ボリュームに適用されます。
+
+ONTAP には、従来型とアダプティブ型の 2 種類の QoS ポリシー グループがあります。従来のポリシー グループは、IOPS で一定した最大（または後のバージョンでは最小）スループットを提供します。アダプティブ QoS は、ワークロードのサイズの変化に応じて IOPS と TB|GB の比率を維持しながら、スループットをワークロードのサイズに合わせて自動的にスケーリングします。これは、大規模な展開で数百または数千のワークロードを管理する場合に大きな利点となります。
+
+QoS ポリシー グループを作成するときは、次の点を考慮してください：
+
+*  `qosPolicy`キーは、バックエンド構成の `defaults`ブロックに設定する必要があります。次のバックエンド構成の例を参照してください：
+
+
+[listing]
+----
+---
+version: 1
+storageDriverName: ontap-nas
+managementLIF: 0.0.0.0
+dataLIF: 0.0.0.0
+svm: svm0
+username: user
+password: pass
+defaults:
+  qosPolicy: standard-pg
+storage:
+  - labels:
+      performance: extreme
+    defaults:
+      adaptiveQosPolicy: extremely-adaptive-pg
+  - labels:
+      performance: premium
+    defaults:
+      qosPolicy: premium-pg
+
+----
+* 各ボリュームがポリシー グループで指定されたスループット全体を取得できるように、ボリュームごとにポリシー グループを適用する必要があります。共有ポリシー グループはサポートされていません。
+
+
+QoSポリシーグループの詳細については、 https://docs.netapp.com/us-en/ontap/concepts/manual-pages.html["ONTAPコマンド リファレンス"^]を参照してください。
+
+
+
+[[limit-storage-resource-access-to-kubernetes-cluster-members]]
+=== Kubernetes クラスタメンバーへのストレージリソースアクセスを制限する
+
+Tridentによって作成されたNFSボリューム、iSCSI LUN、FC LUNへのアクセスを制限することは、Kubernetesデプロイメントのセキュリティ体制にとって重要なコンポーネントです。こうすることで、Kubernetesクラスターの一部ではないホストがボリュームにアクセスして予期せずデータを変更する可能性を防ぐことができます。
+
+名前空間は Kubernetes 内のリソースの論理的な境界であることを理解することが重要です。同じ名前空間内のリソースは共有できると想定されていますが、重要なのは、名前空間間の機能がないことです。つまり、PV はグローバル オブジェクトですが、PVC にバインドされている場合は、同じ名前空間にあるポッドからのみアクセスできます。*適切な場合には、名前空間を使用して分離を行うことが重要です。*
+
+Kubernetes コンテキストでのデータセキュリティに関してほとんどの組織が主に懸念するのは、コンテナ内のプロセスが、ホストにマウントされているがコンテナ用ではないストレージにアクセスできることです。 https://en.wikipedia.org/wiki/Linux_namespaces["ネームスペース"^]は、この種の侵害を防ぐように設計されています。ただし、特権コンテナという例外が 1 つあります。
+
+特権コンテナとは、通常よりも大幅に高いホストレベルの権限で実行されるコンテナです。これらはデフォルトでは拒否されないため、 https://kubernetes.io/docs/concepts/policy/pod-security-policy/["Pod セキュリティポリシー"^]を使用してこの機能を無効にしてください。
+
+Kubernetes と外部ホストの両方からアクセスする必要があるボリュームの場合、ストレージは従来の方法で管理する必要があります。PV は管理者によって導入され、Trident では管理されません。これにより、Kubernetes と外部ホストの両方が切断され、ボリュームを使用しなくなった場合にのみ、ストレージ ボリュームが破棄されるようになります。さらに、カスタム エクスポート ポリシーを適用して、Kubernetes クラスター ノードおよび Kubernetes クラスター外部の対象サーバーからのアクセスを有効にすることもできます。
+
+専用のインフラストラクチャノードを持つデプロイメント（例：OpenShift）またはユーザーアプリケーションをスケジュールできないその他のノードの場合は、別のエクスポートポリシーを使用して、ストレージリソースへのアクセスをさらに制限する必要があります。これには、これらのインフラストラクチャノードに導入されるサービス（例：OpenShift MetricsおよびLoggingサービス）、およびインフラストラクチャ以外のノードに導入される標準アプリケーションのエクスポートポリシーの作成が含まれます。
+
+
+
+[[use-a-dedicated-export-policy]]
+=== 専用のエクスポートポリシーを使用する
+
+各バックエンドに対して、Kubernetes クラスター内に存在するノードへのアクセスのみを許可するエクスポート ポリシーが存在することを確認する必要があります。Trident はエクスポート ポリシーを自動的に作成および管理できます。これにより、Trident は Kubernetes クラスター内のノードにプロビジョニングされたボリュームへのアクセスを制限し、ノードの追加/削除を簡素化します。
+
+あるいは、エクスポート ポリシーを手動で作成し、各ノード アクセス要求を処理する 1 つ以上のエクスポート ルールを設定することもできます：
+
+*  `vserver export-policy create` ONTAP CLI コマンドを使用して、エクスポート ポリシーを作成します。
+* エクスポートポリシーにルールを追加するには、 `vserver export-policy rule create` ONTAP CLI コマンドを使用します。
+
+
+これらのコマンドを実行すると、データにアクセスできる Kubernetes ノードを制限できます。
+
+
+
+[[disable-showmount-for-the-application-svm]]
+=== アプリケーション SVM の `showmount`を無効にします
+
+ `showmount`機能により、NFSクライアントはSVMに対して利用可能なNFSエクスポートのリストを照会できます。Kubernetesクラスタにデプロイされたポッドは、 `showmount -e`コマンドを実行し、アクセスできないマウントも含め、使用可能なマウントのリストを受け取ることができます。これ自体はセキュリティ侵害ではありませんが、権限のないユーザーがNFSエクスポートに接続する際に役立つ可能性のある不要な情報を提供することになります。
+
+ `showmount`を無効にするには、SVMレベルのONTAP CLIコマンドを使用します：
+
+[listing]
+----
+vserver nfs modify -vserver <svm_name> -showmount disabled
+----
+
+
+[[solidfire-best-practices]]
+== SolidFire ベストプラクティス
+
+Trident 用の SolidFire ストレージを設定する際のベストプラクティスを学びます。
+
+
+
+[[create-solidfire-account]]
+=== SolidFireアカウントを作成する
+
+各SolidFireアカウントは一意のボリューム所有者を表し、独自のチャレンジハンドシェイク認証プロトコル（CHAP）クレデンシャルのセットを受け取ります。アカウントに割り当てられたボリュームには、アカウント名と関連するCHAPクレデンシャルを使用するか、ボリュームアクセスグループを通じてアクセスできます。1つのアカウントには最大2,000個のボリュームを割り当てることができますが、1つのボリュームは1つのアカウントにのみ属することができます。
+
+
+
+[[create-a-qos-policy]]
+=== QoS ポリシーを作成する
+
+SolidFire のサービス品質（QoS）ポリシーは、多くのボリュームに適用できる標準化されたサービス品質設定を作成して保存する場合に使用します。
+
+ボリュームごとに QoS パラメータを設定できます。QoS を定義する 3 つの構成可能なパラメータ（最小 IOPS、最大 IOPS、バースト IOPS）を設定することで、各ボリュームのパフォーマンスを保証できます。
+
+4KB ブロック サイズで可能な最小、最大、およびバースト IOPS 値は次のとおりです。
+
+[cols="5*"]
+|===
+| IOPSパラメータ | 定義 | 最小値 | デフォルト値 | 最大値（4Kb） 
+
+
+ a| 
+最小 IOPS
+ a| 
+ボリュームの保証されたパフォーマンス レベル。
+| 50  a| 
+50
+ a| 
+15000
+
+
+
+ a| 
+最大 IOPS
+ a| 
+パフォーマンスはこの制限を超えることはありません。
+| 50  a| 
+15000
+ a| 
+200,000
+
+
+
+ a| 
+バースト IOPS
+ a| 
+短いバーストシナリオで許可される最大 IOPS。
+| 50  a| 
+15000
+ a| 
+200,000
+
+|===
+
+NOTE: 最大 IOPS とバースト IOPS は最大 200,000 まで設定できますが、ボリュームの実際の最大パフォーマンスは、クラスターの使用状況とノードごとのパフォーマンス レベルによって制限されます。
+
+ブロックサイズと帯域幅は、IOPS数に直接的な影響を与えます。ブロックサイズが大きくなるにつれて、システムはより大きなブロックサイズを処理するために必要なレベルまで帯域幅を増加させます。帯域幅が増加すると、システムが達成できるIOPS数は減少します。QoS とパフォーマンスの詳細については、 https://www.netapp.com/pdf.html?item=/media/10502-tr-4644.pdf["SolidFire のサービス品質"^]を参照してください。
+
+
+
+[[solidfire-authentication]]
+=== SolidFire 認証
+
+Element は、CHAP とボリューム アクセス グループ（VAG）の 2 つの認証方法をサポートしています。CHAP は、CHAP プロトコルを使用して、バックエンドに対してホストを認証します。ボリューム アクセス グループは、プロビジョニングするボリュームへのアクセスを制御します。NetApp は、認証には、よりシンプルでスケーリングの制限がない CHAP を使用することをお勧めします。
+
+
+NOTE: 拡張 CSI プロビジョナーを使用する Trident では、 CHAP 認証の使用がサポートされます。VAG は、従来の非 CSI 動作モードでのみ使用してください。
+
+CHAP 認証（イニシエーターが意図したボリューム ユーザーであることの検証）は、アカウント ベースのアクセス制御でのみサポートされます。認証に CHAP を使用する場合は、単方向 CHAP と双方向 CHAP の 2 つのオプションが利用できます。単方向 CHAP は、SolidFire アカウント名とイニシエーター シークレットを使用してボリューム アクセスを認証します。双方向 CHAP オプションは、ボリュームがアカウント名とイニシエーター シークレットを使用してホストを認証し、次にホストがアカウント名とターゲット シークレットを使用してボリュームを認証するため、ボリュームを認証する最も安全な方法を提供します。
+
+ただし、CHAP を有効にできず、VAG が必要な場合は、アクセス グループを作成し、ホスト イニシエーターとボリュームをアクセス グループに追加します。アクセス グループに追加した各 IQN は、CHAP 認証の有無にかかわらず、グループ内の各ボリュームにアクセスできます。iSCSI イニシエーターが CHAP 認証を使用するように構成されている場合は、アカウントベースのアクセス制御が使用されます。iSCSI イニシエーターが CHAP 認証を使用するように構成されていない場合は、ボリューム アクセス グループのアクセス制御が使用されます。
+
+
+
+[[where-to-find-more-information]]
+== さらに詳しい情報はどこで見つかりますか？
+
+ベスト プラクティスのドキュメントの一部を以下に示します。 https://www.netapp.com/search/["NetApp ライブラリ"^]で最新バージョンを検索してください。
+
+*ONTAP*
+
+* https://www.netapp.com/pdf.html?item=/media/10720-tr-4067.pdf["NFS のベストプラクティスと実装ガイド"^]
+* http://docs.netapp.com/ontap-9/topic/com.netapp.doc.dot-cm-sanag/home.html["SAN の管理"^]（iSCSI の場合）
+* http://docs.netapp.com/ontap-9/topic/com.netapp.doc.exp-iscsi-rhel-cg/home.html["RHEL の iSCSI Express 構成"^]
+
+
+*Element ソフトウェア*
+
+* https://www.netapp.com/pdf.html?item=/media/10507-tr4639.pdf["Linux用SolidFireの設定"^]
+
+
+*NetApp HCI*
+
+* https://docs.netapp.com/us-en/hci/docs/hci_prereqs_overview.html["NetApp HCI 導入の前提条件"^]
+* https://docs.netapp.com/us-en/hci/docs/concept_nde_access_overview.html["NetApp Deployment Engine にアクセスします"^]
+
+
+*アプリケーションのベストプラクティス情報*
+
+* https://docs.netapp.com/us-en/ontap-apps-dbs/mysql/mysql-overview.html["ONTAP上のMySQLのベストプラクティス"^]
+* https://www.netapp.com/pdf.html?item=/media/10510-tr-4605.pdf["SolidFire での MySQL のベストプラクティス"^]
+* https://www.netapp.com/pdf.html?item=/media/10513-tr-4635.pdf["NetApp SolidFire と Cassandra"^]
+* https://www.netapp.com/pdf.html?item=/media/10511-tr4606.pdf["SolidFire での Oracle のベストプラクティス"^]
+* https://www.netapp.com/pdf.html?item=/media/10512-tr-4610.pdf["SolidFire での PostgreSQL のベストプラクティス"^]
+
+
+すべてのアプリケーションに特定のガイドラインがあるわけではないため、NetApp チームと協力し、 https://www.netapp.com/search/["NetApp ライブラリ"^]を使用して最新のドキュメントを見つけることが重要です。

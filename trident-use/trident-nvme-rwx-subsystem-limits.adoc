@@ -1,0 +1,91 @@
+---
+sidebar: sidebar 
+permalink: trident-use/trident-nvme-rwx-subsystem-limits.html 
+keywords: trident, nvme, rwx, ontap, nvme subsystem, rwx nvme limit, super-subsystem, controller limit, 26.02 
+summary: RWX NVMe サブシステムの制限事項（ボリュームあたり最大64ノードという制限、サブシステムのアーキテクチャ変更、必要なアップグレード手順など）について説明します。 
+---
+= RWX NVMe サブシステムの制限について
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+ReadWriteMany （RWX）ボリュームのうち、NVMeプロトコルを使用するものは、ボリュームあたり64ノードという拡張性の制限があります。以下では、制限事項、関連するNVMeサブシステムアーキテクチャの説明、および必要な解決手順の概要を示します。
+
+
+
+[[understand-the-64-node-limit]]
+== 64ノード制限について理解する
+
+ReadWriteMany（RWX）ボリュームをNVMeプロトコルで使用する予定がある場合、Kubernetesクラスタでは、単一のRWX NVMeボリュームを64ノード以上でマウントすることはできません。
+
+同じRWX NVMe PersistentVolumeClaim をマウントするワークロードを64ノードを超えてスケジュールしないでください。
+
+この制限は、NVMe プロトコルを使用する RWX ボリュームにのみ適用されます。
+
+
+
+[[understand-nvme-subsystem-models]]
+== NVMeサブシステムモデルを理解する
+
+
+
+[[per-volume-subsystem-model-trident-releases-earlier-than-26-02]]
+=== ボリュームごとのサブシステムモデル（Trident 26.02より前のリリース）
+
+Trident 26.02より前のリリースでは、RWX NVMeボリュームはボリュームごとのサブシステムモデルを使用してプロビジョニングされます。各RWX NVMeボリュームは、ONTAP上の専用のNVMeサブシステムにマッピングされます。
+
+このモデルはシンプルですが、スケーラビリティの上限が低くなっています。大規模な Kubernetes クラスターでは、各 RWX ボリュームが専用のサブシステムを消費するため、サブシステムコントローラの制限にすぐに達してしまいます。
+
+
+
+[[super-subsystem-model-introduced-in-trident-26-02]]
+=== スーパーサブシステムモデル（Trident 26.02で導入）
+
+Trident 26.02以降、RWX NVMeボリュームは共有スーパーサブシステムモデルを使用します。複数のRWX NVMeボリュームが同じNVMeサブシステムを共有します。
+
+各スーパーサブシステムは、最大1024個のネームスペース（ボリューム）をサポートします。このモデルはRWXワークロードのスケーラビリティを大幅に向上させ、ONTAPサブシステムの制限に達する可能性を低減します。
+
+各RWX NVMeボリュームは最大64ノードをサポートします。
+
+
+
+[[identify-error-symptoms]]
+== エラーの兆候を特定する
+
+RWX NVMe ボリュームを大規模に作成または接続すると、次のようなエラーが発生する可能性があります：
+
+[listing]
+----
+Maximum number of controllers reached. No more controllers can be created.
+----
+このエラーは、ONTAP NVMe サブシステムコントローラの制限に達したことを示しています。
+
+
+
+[[resolve-subsystem-limit-errors]]
+== サブシステム制限エラーを解決する
+
+ボリュームごとのサブシステム制限を超えてスーパーサブシステムモデルを活用するには、Trident 26.02以降にアップグレードしてください。
+
+
+
+[[upgrade-trident-to-apply-the-super-subsystem-model]]
+== スーパーサブシステムモデルを適用するために Trident をアップグレードする
+
+RWX NVMe ボリュームにスーパーサブシステムモデルを適用するには：
+
+. Trident をバージョン 26.02 以降にアップグレードしてください。
+. RWX NVMeボリュームを使用するすべてのポッドのレプリカ数をゼロに縮小します。
+. ワークロードがRWX NVMeボリュームをアクティブに使用していないことを確認してください。
+. ポッドをスケールアップして元に戻します。
+
+
+この再起動シーケンスにより、RWX NVMe ボリュームがスーパーサブシステムモデルを使用して接続されることが保証されます。
+
+* この制限は、NVMe プロトコルを使用する RWX ボリュームにのみ適用されます。
+* 64ノードの制限は、RWX NVMe ボリュームごとに適用されます。
+* その他のアクセスモードおよびプロトコルには影響はありません。
+

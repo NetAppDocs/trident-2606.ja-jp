@@ -1,0 +1,71 @@
+---
+settings:
+  name: Trident
+  downlevel: true
+  internal:
+    pdf_enabled: true
+  prod:
+    pdf_enabled: true
+    harmony_enabled: false
+  rss_page: trident-rn.html
+  versions:
+  - version-number: '26.06'
+    url: "/trident-2606"
+  - version-number: '26.10'
+    url: "/trident"
+  - version-number: '26.02'
+    url: "/trident-2602"
+  - version-number: '25.10'
+    url: "/trident-2510"
+  - version-number: '25.06'
+    url: "/trident-2506"
+  - version-number: '25.02'
+    url: "/trident-2502"
+  - version-number: '24.10'
+    url: "/trident-2410"
+  - version-number: '24.06'
+    url: "/trident-2406"
+  - version-number: '24.02'
+    url: "/trident-2402"
+  - version-number: '23.10'
+    url: "/trident-2310"
+  - version-number: '23.07'
+    url: "/trident-2307"
+  langs: ja-jp,us-en,de-de,es-es,fr-fr,it-it,pt-br,ko-kr,zh-cn,zh-tw
+sidebar:
+  entries:
+  - title: Trident ドキュメント
+    url: "/index.html"
+  - title: リリース ノート
+    entries:
+    - title: 新機能
+      url: "/trident-rn.html"
+    - title: 以前のバージョン
+      url: "/earlier-versions.html"
+    - title: ASA r2ストレージシステムのTridentサポート
+      url: "/trident-asar2-support.html"
+    - title: 既知の問題
+      url: "/known-issues.html"
+  - section: trident-get-started
+  - section: trident-install
+  - section: trident-use
+  - section: trident-managing-k8s
+  - section: trident-docker
+  - section: trident-reco
+  - section: trident-protect
+  - title: ブログ投稿
+    url: "/blog-posts.html"
+  - title: ナレッジとサポート
+    entries:
+    - title: FAQ
+      url: "/faq.html"
+    - title: トラブルシューティング
+      url: "/troubleshooting.html"
+    - title: ヘルプを表示
+      url: "/get-help.html"
+  - section: trident-reference
+  - title: 法律上の表示
+    url: "/legal-notices.html"
+product-family:
+  name: Trident
+  repo: astra-family

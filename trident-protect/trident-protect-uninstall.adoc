@@ -1,0 +1,44 @@
+---
+sidebar: sidebar 
+permalink: trident-protect/trident-protect-uninstall.html 
+keywords: trident, protect, netapp, uninstall, full version 
+summary: 試用版から製品の完全版にアップグレードする場合は、Trident Protectコンポーネントを削除する必要があるかもしれません。 
+---
+= Trident Protectをアンインストールする
+:hardbreaks:
+:allow-uri-read: 
+:nofooter: 
+:icons: font
+:linkattrs: 
+:imagesdir: ../media/
+
+
+[role="lead"]
+試用版から製品の完全版にアップグレードする場合は、Trident Protectコンポーネントを削除する必要があるかもしれません。
+
+Trident Protectを削除するには、次の手順を実行します。
+
+.手順
+. Trident Protect CR ファイルを削除します：
++
+
+NOTE: バージョン 25.06 以降ではこの手順は必要ありません。
+
++
+[source, console]
+----
+helm uninstall -n trident-protect trident-protect-crds
+----
+. Trident Protectを削除：
++
+[source, console]
+----
+helm uninstall -n trident-protect trident-protect
+----
+. Trident Protect ネームスペースを削除します：
++
+[source, console]
+----
+kubectl delete ns trident-protect
+----
+

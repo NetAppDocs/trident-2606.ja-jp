@@ -1,0 +1,665 @@
+---
+sidebar: sidebar 
+permalink: trident-protect/trident-protect-restore-apps.html 
+keywords: trident, protect, restore, data, backup 
+summary: Trident Protectを使用して、スナップショットまたはバックアップからアプリケーションを復元できます。アプリケーションを同じクラスターに復元する場合、既存のスナップショットからの復元の方が高速になります。 
+---
+= Trident Protectを使用してアプリケーションを復元する
+:hardbreaks:
+:allow-uri-read: 
+:nofooter: 
+:icons: font
+:linkattrs: 
+:imagesdir: ../media/
+
+
+[role="lead"]
+Trident Protectを使用して、スナップショットまたはバックアップからアプリケーションを復元できます。アプリケーションを同じクラスターに復元する場合、既存のスナップショットからの復元の方が高速になります。
+
+[NOTE]
+====
+* アプリケーションを復元すると、アプリケーションに対して設定されているすべての実行フックもアプリとともに復元されます。リストア後の実行フックが存在する場合、リストア処理の一部として自動的に実行されます。
+* バックアップから別の名前空間または元の名前空間への復元は、qtree ボリュームでサポートされています。ただし、スナップショットから別の名前空間または元の名前空間への復元は、qtree ボリュームではサポートされていません。
+* 詳細設定を使用して復元操作をカスタマイズできます。詳細については、link:../trident-protect/trident-protect-restore-settings.html["高度な Trident Protect リストア設定を使用する"]を参照してください。
+* アーカイブからすべての名前空間リソースを復元せずに特定のKubeVirt仮想マシン（VM）を復元するには、復元CR の `includedVirtualMachines`フィールドを使用します。サポートされているCR、フィールドリファレンス、およびYAMLの例については、link:trident-protect-kubevirt-vms.html["KubeVirt 仮想マシンを Trident Protect で保護する"]を参照してください。
+
+
+====
+
+
+[[restore-from-a-backup-to-a-different-namespace]]
+== バックアップから別の名前空間に復元する
+
+BackupRestore CR を使用して異なる名前空間にバックアップを復元すると、Trident Protect は、アプリケーションを新しい名前空間に復元し、復元されたアプリケーションのアプリケーション CR を作成します。復元されたアプリケーションを保護するには、オンデマンド バックアップまたはスナップショットを作成するか、保護スケジュールを設定します。
+
+[NOTE]
+====
+* 既存のリソースを含む別の名前空間にバックアップをリストアしても、バックアップ内のリソースと名前を共有するリソースは変更されません。バックアップ内のすべてのリソースをリストアするには、ターゲット名前空間を削除して再作成するか、バックアップを新しい名前空間にリストアします。
+* CR を使用して新しい名前空間に復元する場合は、CR を適用する前に、宛先名前空間を手動で作成する必要があります。Trident Protect は、CLI を使用する場合にのみネームスペースを自動的に作成します。
+
+
+====
+.開始する前に
+AWS セッショントークンの有効期限が、長時間実行される s3 復元処理に十分であることを確認します。復元操作中にトークンの有効期限が切れると、操作が失敗する可能性があります。
+
+* 現在のセッショントークンの有効期限を確認する方法の詳細については、 https://docs.aws.amazon.com/STS/latest/APIReference/API_GetSessionToken.html["AWS API ドキュメント"^]を参照してください。
+* AWS リソースの認証情報の詳細については、 https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html["AWS IAM ドキュメント"^]を参照してください。
+
+
+
+NOTE: Kopia をデータ ムーバーとして使用してバックアップを復元する場合、オプションで CR に注釈を指定するか、CLI を使用して Kopia が使用する一時ストレージの動作を制御できます。設定できるオプションの詳細については、 https://kopia.io/docs/getting-started/["Kopiaのドキュメント"^]を参照してください。Trident Protect CLI で注釈を指定する方法の詳細については、 `tridentctl-protect create --help`コマンドを使用してください。
+
+[role="tabbed-block"]
+====
+.CRを使用する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-backup-restore-cr.yaml`という名前を付けます。
+. 作成したファイルで、次の属性を設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.appArchivePath*：AppVault内でバックアップコンテンツが保存されるパス。このパスを見つけるには、次のコマンドを使用できます：
++
+[source, console]
+----
+kubectl get backups <BACKUP_NAME> -n my-app-namespace -o jsonpath='{.status.appArchivePath}'
+----
+** *spec.appVaultRef*：（_必須_）バックアップコンテンツが保存されるAppVaultの名前。
+** *spec.destinationApplicationName*: （_オプション_）復元されたアプリケーションの名前。指定した場合、復元されたアプリケーションはこの名前を使用します。指定しない場合、復元されたアプリケーションは元のアプリケーション名を使用します。
+** *spec.namespaceMapping*：リストア処理のソースネームスペースからデスティネーションネームスペースへのマッピング。 `my-source-namespace`と `my-destination-namespace`を環境の情報に置き換えます。
++
+[source, yaml]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: BackupRestore
+metadata:
+  name: my-cr-name
+  namespace: my-destination-namespace
+spec:
+  appArchivePath: my-backup-path
+  appVaultRef: appvault-name
+  destinationApplicationName: my-new-app-name
+  namespaceMapping: [{"source": "my-source-namespace", "destination": "my-destination-namespace"}]
+----
+
+
+. （オプション）アプリケーションの特定のリソースのみを選択して復元する必要がある場合は、特定のラベルが付いたリソースを含めるか除外するかを指定するフィルタリングを追加します。
++
+
+NOTE: Trident Protect は、選択したリソースとの関係に基づいて、一部のリソースを自動的に選択します。例えば、永続ボリューム要求リソースを選択し、それに関連付けられたポッドがある場合、Trident Protect は、関連付けられたポッドも復元します。
+
++
+** *resourceFilter.resourceSelectionCriteria*：（フィルタリングに必須） `Include`または `Exclude`を使用して、resourceMatchersで定義されたリソースを含めるか除外します。以下のresourceMatchersパラメータを追加して、含めるまたは除外するリソースを定義します：
++
+*** *resourceFilter.resourceMatchers*：resourceMatcherオブジェクトの配列。この配列に複数の要素を定義した場合、それらはOR演算で一致し、各要素内のフィールド（group、kind、version）はAND演算で一致します。
++
+**** *resourceMatchers[].group*：（_オプション_）フィルタリングするリソースのグループ。
+**** *resourceMatchers[].kind*：（_オプション_）フィルタリングするリソースの種類。
+**** *resourceMatchers[].version*：（_オプション_）フィルタリングするリソースのバージョン。
+**** *resourceMatchers[].names*：（_オプション_）フィルタリングするリソースの Kubernetes metadata.name フィールド内の名前。
+**** *resourceMatchers[].namespaces*：（_オプション_）フィルタリングするリソースの Kubernetes metadata.name フィールド内の名前空間。
+**** *resourceMatchers[].labelSelectors*：（_オプション_） https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors["Kubernetesドキュメント"^]で定義されているリソースのKubernetesメタデータ.nameフィールドのラベルセレクタ文字列。例： `"trident.netapp.io/os=linux"`
++
+次に例を示します。
+
++
+[source, yaml]
+----
+spec:
+  resourceFilter:
+    resourceSelectionCriteria: "Include"
+    resourceMatchers:
+      - group: my-resource-group-1
+        kind: my-resource-kind-1
+        version: my-resource-version-1
+        names: ["my-resource-names"]
+        namespaces: ["my-resource-namespaces"]
+        labelSelectors: ["trident.netapp.io/os=linux"]
+      - group: my-resource-group-2
+        kind: my-resource-kind-2
+        version: my-resource-version-2
+        names: ["my-resource-names"]
+        namespaces: ["my-resource-namespaces"]
+        labelSelectors: ["trident.netapp.io/os=linux"]
+----
+
+
+
+
+
+
+.  `trident-protect-backup-restore-cr.yaml`ファイルに正しい値を入力したら、CRを適用します。
++
+[source, console]
+----
+kubectl apply -f trident-protect-backup-restore-cr.yaml
+----
+
+
+--
+.CLI を使用する
+--
+.手順
+. 括弧内の値を環境の情報に置き換えて、バックアップを別の名前空間に復元します。 `namespace-mapping`引数はコロンで区切られた名前空間を使用して、ソース名前空間を正しいデスティネーション名前空間にマッピングします（形式は `source1:dest1,source2:dest2`）。次に例を示します。
++
+[source, console]
+----
+tridentctl-protect create backuprestore <my_restore_name> \
+--backup <backup_namespace>/<backup_to_restore> \
+--namespace-mapping <source_to_destination_namespace_mapping> \ --destination-app-name<custom_app_name>\
+-n <application_namespace>
+----
+
+
+--
+====
+
+
+[[restore-from-a-backup-to-the-original-namespace]]
+== バックアップから元の名前空間に復元する
+
+バックアップはいつでも元の名前空間に復元できます。In Placeリストアを実行すると、Trident Protectは、無効なリカバリポイントを防止するために、保護スケジュールと進行中の操作を自動的に管理します。
+
+* 復元が開始される前に、アプリケーションに対して有効になっているすべての保護スケジュールが無効になります。これにより、アプリケーションリソースの復元中に、スケジュールされたバックアップやスナップショットが実行されるのを防ぎます。
+* 復元が正常に完了すると、復元前に有効になっていたスケジュールのみが再度有効になります。既に無効化されているスケジュールは、引き続き無効化されたままです。
+* 復元が開始される前に、進行中のバックアップまたはスナップショット操作はすべてキャンセルされます。操作が5分以内にキャンセルされない場合、復元処理は続行され、復元CRステータスに警告が記録されます。
+
+
+.開始する前に
+AWS セッショントークンの有効期限が、長時間実行される s3 復元処理に十分であることを確認します。復元操作中にトークンの有効期限が切れると、操作が失敗する可能性があります。
+
+* 現在のセッショントークンの有効期限を確認する方法の詳細については、 https://docs.aws.amazon.com/STS/latest/APIReference/API_GetSessionToken.html["AWS API ドキュメント"^]を参照してください。
+* AWS リソースの認証情報の詳細については、 https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html["AWS IAM ドキュメント"^]を参照してください。
+
+
+
+NOTE: Kopia をデータ ムーバーとして使用してバックアップを復元する場合、オプションで CR に注釈を指定するか、CLI を使用して Kopia が使用する一時ストレージの動作を制御できます。設定できるオプションの詳細については、 https://kopia.io/docs/getting-started/["Kopiaのドキュメント"^]を参照してください。Trident Protect CLI で注釈を指定する方法の詳細については、 `tridentctl-protect create --help`コマンドを使用してください。
+
+[role="tabbed-block"]
+====
+.CRを使用する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-backup-ipr-cr.yaml`という名前を付けます。
+. 作成したファイルで、次の属性を設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.appArchivePath*：AppVault内でバックアップコンテンツが保存されるパス。このパスを見つけるには、次のコマンドを使用できます：
++
+[source, console]
+----
+kubectl get backups <BACKUP_NAME> -n my-app-namespace -o jsonpath='{.status.appArchivePath}'
+----
+** *spec.appVaultRef*：（_必須_）バックアップコンテンツが保存されるAppVaultの名前。
++
+次に例を示します。
+
++
+[source, yaml]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: BackupInplaceRestore
+metadata:
+  name: my-cr-name
+  namespace: my-app-namespace
+spec:
+  appArchivePath: my-backup-path
+  appVaultRef: appvault-name
+----
+
+
+. （オプション）アプリケーションの特定のリソースのみを選択して復元する必要がある場合は、特定のラベルが付いたリソースを含めるか除外するかを指定するフィルタリングを追加します。
++
+
+NOTE: Trident Protect は、選択したリソースとの関係に基づいて、一部のリソースを自動的に選択します。例えば、永続ボリューム要求リソースを選択し、それに関連付けられたポッドがある場合、Trident Protect は、関連付けられたポッドも復元します。
+
++
+** *resourceFilter.resourceSelectionCriteria*：（フィルタリングに必須） `Include`または `Exclude`を使用して、resourceMatchersで定義されたリソースを含めるか除外します。以下のresourceMatchersパラメータを追加して、含めるまたは除外するリソースを定義します：
++
+*** *resourceFilter.resourceMatchers*：resourceMatcherオブジェクトの配列。この配列に複数の要素を定義した場合、それらはOR演算で一致し、各要素内のフィールド（group、kind、version）はAND演算で一致します。
++
+**** *resourceMatchers[].group*：（_オプション_）フィルタリングするリソースのグループ。
+**** *resourceMatchers[].kind*：（_オプション_）フィルタリングするリソースの種類。
+**** *resourceMatchers[].version*：（_オプション_）フィルタリングするリソースのバージョン。
+**** *resourceMatchers[].names*：（_オプション_）フィルタリングするリソースの Kubernetes metadata.name フィールド内の名前。
+**** *resourceMatchers[].namespaces*：（_オプション_）フィルタリングするリソースの Kubernetes metadata.name フィールド内の名前空間。
+**** *resourceMatchers[].labelSelectors*：（_オプション_） https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors["Kubernetesドキュメント"^]で定義されているリソースのKubernetesメタデータ.nameフィールドのラベルセレクタ文字列。例： `"trident.netapp.io/os=linux"`
++
+次に例を示します。
+
++
+[source, yaml]
+----
+spec:
+  resourceFilter:
+    resourceSelectionCriteria: "Include"
+    resourceMatchers:
+      - group: my-resource-group-1
+        kind: my-resource-kind-1
+        version: my-resource-version-1
+        names: ["my-resource-names"]
+        namespaces: ["my-resource-namespaces"]
+        labelSelectors: ["trident.netapp.io/os=linux"]
+      - group: my-resource-group-2
+        kind: my-resource-kind-2
+        version: my-resource-version-2
+        names: ["my-resource-names"]
+        namespaces: ["my-resource-namespaces"]
+        labelSelectors: ["trident.netapp.io/os=linux"]
+----
+
+
+
+
+
+
+.  `trident-protect-backup-ipr-cr.yaml`ファイルに正しい値を入力したら、CRを適用します。
++
+[source, console]
+----
+kubectl apply -f trident-protect-backup-ipr-cr.yaml
+----
+
+
+--
+.CLI を使用する
+--
+.手順
+. 括弧内の値を環境の情報に置き換えて、バックアップを元の名前空間に復元します。 `backup`引数は、名前空間とバックアップ名を `<namespace>/<name>`の形式で使用します。次に例を示します。
++
+[source, console]
+----
+tridentctl-protect create backupinplacerestore <my_restore_name> \
+--backup <namespace/backup_to_restore> \
+-n <application_namespace>
+----
+
+
+--
+====
+
+
+[[restore-from-a-backup-to-a-different-cluster]]
+== バックアップから別のクラスタにリストアする
+
+元のクラスタに問題がある場合は、バックアップを別のクラスタにリストアできます。
+
+[NOTE]
+====
+* Kopia をデータ ムーバーとして使用してバックアップを復元する場合、オプションで CR に注釈を指定するか、CLI を使用して Kopia が使用する一時ストレージの動作を制御できます。設定できるオプションの詳細については、 https://kopia.io/docs/getting-started/["Kopiaのドキュメント"^]を参照してください。Trident Protect CLI で注釈を指定する方法の詳細については、 `tridentctl-protect create --help`コマンドを使用してください。
+* CR を使用して新しい名前空間に復元する場合は、CR を適用する前に、宛先名前空間を手動で作成する必要があります。Trident Protect は、CLI を使用する場合にのみネームスペースを自動的に作成します。
+
+
+====
+.開始する前に
+次の前提条件が満たされていることを確認してください：
+
+* デスティネーション クラスタに Trident Protect がインストールされている。
+* デスティネーション クラスタは、バックアップが保存されているソース クラスタと同じAppVaultのバケット パスにアクセスできます。
+* ローカル環境が、 `tridentctl-protect get appvaultcontent`コマンドの実行時にAppVault CRで定義されたオブジェクトストレージバケットに接続できることを確認してください。ネットワーク制限によりアクセスできない場合は、代わりにデスティネーション クラスタ上のポッド内からTrident Protect CLIを実行してください。
+* AWS セッション トークンの有効期限が、長時間実行される復元操作に十分であることを確認します。復元操作中にトークンの有効期限が切れると、操作が失敗する可能性があります。
++
+** 現在のセッショントークンの有効期限を確認する方法の詳細については、 https://docs.aws.amazon.com/STS/latest/APIReference/API_GetSessionToken.html["AWS API ドキュメント"^]を参照してください。
+** AWS リソースの認証情報の詳細については、 https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html["AWSのドキュメント"^]を参照してください。
+
+
+
+
+.手順
+. Trident Protect CLIプラグインを使用して、デスティネーション クラスタにAppVault CRが存在することを確認します：
++
+[source, console]
+----
+tridentctl-protect get appvault --context <destination_cluster_name>
+----
++
+
+NOTE: AppVault CR がデスティネーション クラスタに存在しない場合は、link:trident-protect-appvault-custom-resources.html["Trident Protect AppVaultオブジェクトを使用してバケットを管理する"]の手順に従って作成します。
+
+. デスティネーション クラスタで利用可能なAppVaultのバックアップコンテンツを表示し、復元するバックアップの `appArchivePath`をメモします：
++
+[source, console]
+----
+tridentctl-protect get appvaultcontent <appvault_name> \
+--show-resources backup \
+--show-paths \
+--context <destination_cluster_name>
+----
++
+このコマンドを実行すると、AppVault内の利用可能なバックアップが表示されます。これには、元のクラスタ、対応するアプリケーション名、タイムスタンプ、アーカイブ パスが含まれます。
+
++
+*出力例：*
+
++
+[listing]
+----
++-------------+-----------+--------+-----------------+--------------------------+-------------+
+|   CLUSTER   |    APP    |  TYPE  |      NAME       |        TIMESTAMP         |    PATH     |
++-------------+-----------+--------+-----------------+--------------------------+-------------+
+| production1 | wordpress | backup | wordpress-bkup-1| 2024-10-30 08:37:40 (UTC)| backuppath1 |
+| production1 | wordpress | backup | wordpress-bkup-2| 2024-10-30 08:37:40 (UTC)| backuppath2 |
++-------------+-----------+--------+-----------------+--------------------------+-------------+
+----
+. AppVault名前とアーカイブパスを使用して、アプリケーションをデスティネーション クラスタに復元します：
+
+
+
+NOTE: CRを使用する場合は、アプリケーションのリストアに使用する名前空間がデスティネーション クラスタに存在することを確認してください。
+
+[role="tabbed-block"]
+====
+.CRを使用する
+--
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-backup-restore-cr.yaml`という名前を付けます。
+. 作成したファイルで、次の属性を設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.appVaultRef*：（_必須_）バックアップコンテンツが保存されるAppVaultの名前。
+** *spec.appArchivePath*：（必須）AppVault内のバックアップコンテンツが保存されるパス。ステップ2のコマンドを使用してバックアップの内容を表示し、復元するバックアップの `appArchivePath`を確認します。
+** *spec.destinationApplicationName*: （_オプション_）復元されたアプリケーションの名前。指定した場合、復元されたアプリケーションはこの名前を使用します。指定しない場合、復元されたアプリケーションは元のアプリケーション名を使用します。
+** *spec.namespaceMapping*：リストア処理のソースネームスペースからデスティネーションネームスペースへのマッピング。 `my-source-namespace`と `my-destination-namespace`を環境の情報に置き換えます。
++
+次に例を示します。
+
++
+[source, yaml]
+----
+apiVersion: protect.trident.netapp.io/v1
+kind: BackupRestore
+metadata:
+  name: my-cr-name
+  namespace: my-destination-namespace
+spec:
+  appVaultRef: appvault-name
+  appArchivePath: my-backup-path
+  destinationApplicationName: my-new-app-name
+  namespaceMapping: [{"source": "my-source-namespace", "destination": "my-destination-namespace"}]
+----
+
+
+.  `trident-protect-backup-restore-cr.yaml`ファイルに正しい値を入力したら、CRを適用します。
++
+[source, console]
+----
+kubectl apply -f trident-protect-backup-restore-cr.yaml
+----
+
+
+--
+.CLI を使用する
+--
+. 次のコマンドを使用してアプリケーションを復元し、括弧内の値を環境の情報に置き換えます。namespace-mapping 引数は、コロンで区切られた名前空間を使用して、source1：dest1、source2：dest2 の形式でソース名前空間を正しい宛先名前空間にマッピングします。次に例を示します。
++
+[source, console]
+----
+tridentctl-protect create backuprestore <restore_name> \
+--namespace-mapping <source_to_destination_namespace_mapping> \
+--appvault <appvault_name> \
+--path <backup_path> \
+--destination-app-name <custom_app_name> \
+--context <destination_cluster_name> \
+-n <application_namespace>
+----
+
+
+--
+====
+
+
+[[restore-from-a-snapshot-to-a-different-namespace]]
+== スナップショットから別の namespace にリストアする
+
+カスタム リソース（CR）ファイルを使用して、スナップショットからデータを別の名前空間または元のソース名前空間に復元できます。SnapshotRestore CR を使用してスナップショットを別の名前空間に復元すると、Trident Protect は新しい名前空間にアプリケーションを復元し、復元されたアプリケーションのアプリケーション CR を作成します。復元されたアプリケーションを保護するには、オンデマンド バックアップまたはスナップショットを作成するか、保護スケジュールを設定します。
+
+[NOTE]
+====
+* SnapshotRestoreは `spec.storageClassMapping`属性をサポートしていますが、ソース ストレージ クラスとデスティネーション ストレージ クラスが同じストレージ バックエンドを使用する場合のみです。異なるストレージ バックエンドを使用する `StorageClass`に復元しようとすると、復元処理は失敗します。
+* CR を使用して新しい名前空間に復元する場合は、CR を適用する前に、宛先名前空間を手動で作成する必要があります。Trident Protect は、CLI を使用する場合にのみネームスペースを自動的に作成します。
+
+
+====
+.開始する前に
+AWS セッショントークンの有効期限が、長時間実行される s3 復元処理に十分であることを確認します。復元操作中にトークンの有効期限が切れると、操作が失敗する可能性があります。
+
+* 現在のセッショントークンの有効期限を確認する方法の詳細については、 https://docs.aws.amazon.com/STS/latest/APIReference/API_GetSessionToken.html["AWS API ドキュメント"^]を参照してください。
+* AWS リソースの認証情報の詳細については、 https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html["AWS IAM ドキュメント"^]を参照してください。
+
+
+[role="tabbed-block"]
+====
+.CRを使用する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-snapshot-restore-cr.yaml`という名前を付けます。
+. 作成したファイルで、次の属性を設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.appVaultRef*：（_必須_）スナップショットの内容が保存されるAppVaultの名前。
+** *spec.appArchivePath*：AppVault内のパスで、スナップショットの内容が保存される場所。このパスを見つけるには、次のコマンドを使用できます：
++
+[source, console]
+----
+kubectl get snapshots <SNAPHOT_NAME> -n my-app-namespace -o jsonpath='{.status.appArchivePath}'
+----
+** *spec.destinationApplicationName*: （_オプション_）復元されたアプリケーションの名前。指定した場合、復元されたアプリケーションはこの名前を使用します。指定しない場合、復元されたアプリケーションは元のアプリケーション名を使用します。
+** *spec.namespaceMapping*：リストア処理のソースネームスペースからデスティネーションネームスペースへのマッピング。 `my-source-namespace`と `my-destination-namespace`を環境の情報に置き換えます。
++
+[source, yaml]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: SnapshotRestore
+metadata:
+  name: my-cr-name
+  namespace: my-destination-namespace
+spec:
+  appVaultRef: appvault-name
+  appArchivePath: my-snapshot-path
+  namespaceMapping: [{"source": "my-source-namespace", "destination": "my-destination-namespace"}]
+----
+
+
+. （オプション）アプリケーションの特定のリソースのみを選択して復元する必要がある場合は、特定のラベルが付いたリソースを含めるか除外するかを指定するフィルタリングを追加します。
++
+
+NOTE: Trident Protect は、選択したリソースとの関係に基づいて、一部のリソースを自動的に選択します。例えば、永続ボリューム要求リソースを選択し、それに関連付けられたポッドがある場合、Trident Protect は、関連付けられたポッドも復元します。
+
++
+** *resourceFilter.resourceSelectionCriteria*：（フィルタリングに必須） `Include`または `Exclude`を使用して、resourceMatchersで定義されたリソースを含めるか除外します。以下のresourceMatchersパラメータを追加して、含めるまたは除外するリソースを定義します：
++
+*** *resourceFilter.resourceMatchers*：resourceMatcherオブジェクトの配列。この配列に複数の要素を定義した場合、それらはOR演算で一致し、各要素内のフィールド（group、kind、version）はAND演算で一致します。
++
+**** *resourceMatchers[].group*：（_オプション_）フィルタリングするリソースのグループ。
+**** *resourceMatchers[].kind*：（_オプション_）フィルタリングするリソースの種類。
+**** *resourceMatchers[].version*：（_オプション_）フィルタリングするリソースのバージョン。
+**** *resourceMatchers[].names*：（_オプション_）フィルタリングするリソースの Kubernetes metadata.name フィールド内の名前。
+**** *resourceMatchers[].namespaces*：（_オプション_）フィルタリングするリソースの Kubernetes metadata.name フィールド内の名前空間。
+**** *resourceMatchers[].labelSelectors*：（_オプション_） https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors["Kubernetesドキュメント"^]で定義されているリソースのKubernetesメタデータ.nameフィールドのラベルセレクタ文字列。例： `"trident.netapp.io/os=linux"`
++
+次に例を示します。
+
++
+[source, yaml]
+----
+spec:
+  resourceFilter:
+    resourceSelectionCriteria: "Include"
+    resourceMatchers:
+      - group: my-resource-group-1
+        kind: my-resource-kind-1
+        version: my-resource-version-1
+        names: ["my-resource-names"]
+        namespaces: ["my-resource-namespaces"]
+        labelSelectors: ["trident.netapp.io/os=linux"]
+      - group: my-resource-group-2
+        kind: my-resource-kind-2
+        version: my-resource-version-2
+        names: ["my-resource-names"]
+        namespaces: ["my-resource-namespaces"]
+        labelSelectors: ["trident.netapp.io/os=linux"]
+----
+
+
+
+
+
+
+.  `trident-protect-snapshot-restore-cr.yaml`ファイルに正しい値を入力したら、CRを適用します。
++
+[source, console]
+----
+kubectl apply -f trident-protect-snapshot-restore-cr.yaml
+----
+
+
+--
+.CLI を使用する
+--
+.手順
+. 括弧内の値を環境の情報に置き換えて、スナップショットを別のネームスペースにリストアします。
++
+** その `snapshot`引数は、名前空間とスナップショット名を次の形式で使用します `<namespace>/<name>`。
+**  `namespace-mapping`引数はコロンで区切られた名前空間を使用して、ソース名前空間を正しいデスティネーション名前空間にマッピングします（形式は `source1:dest1,source2:dest2`）。
++
+次に例を示します。
+
++
+[source, console]
+----
+tridentctl-protect create snapshotrestore <my_restore_name> \
+--snapshot <namespace/snapshot_to_restore> \
+--namespace-mapping <source_to_destination_namespace_mapping> \
+--destination-app-name <custom_app_name> \
+-n <application_namespace>
+----
+
+
+
+
+--
+====
+
+
+[[restore-from-a-snapshot-to-the-original-namespace]]
+== スナップショットから元の名前空間に復元する
+
+スナップショットはいつでも元の名前空間に復元できます。In Placeリストアを実行すると、Trident Protectは、無効なリカバリポイントを防止するために、保護スケジュールと進行中の操作を自動的に管理します。
+
+* 復元が開始される前に、アプリケーションに対して有効になっているすべての保護スケジュールが無効になります。これにより、アプリケーションリソースの復元中に、スケジュールされたバックアップやスナップショットが実行されるのを防ぎます。
+* 復元が正常に完了すると、復元前に有効になっていたスケジュールのみが再度有効になります。既に無効化されているスケジュールは、引き続き無効化されたままです。
+* 復元が開始される前に、進行中のバックアップまたはスナップショット操作はすべてキャンセルされます。操作が5分以内にキャンセルされない場合、復元処理は続行され、復元CRステータスに警告が記録されます。
+
+
+.開始する前に
+AWS セッショントークンの有効期限が、長時間実行される s3 復元処理に十分であることを確認します。復元操作中にトークンの有効期限が切れると、操作が失敗する可能性があります。
+
+* 現在のセッショントークンの有効期限を確認する方法の詳細については、 https://docs.aws.amazon.com/STS/latest/APIReference/API_GetSessionToken.html["AWS API ドキュメント"^]を参照してください。
+* AWS リソースの認証情報の詳細については、 https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html["AWS IAM ドキュメント"^]を参照してください。
+
+
+[role="tabbed-block"]
+====
+.CRを使用する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-snapshot-ipr-cr.yaml`という名前を付けます。
+. 作成したファイルで、次の属性を設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.appVaultRef*：（_必須_）スナップショットの内容が保存されるAppVaultの名前。
+** *spec.appArchivePath*：AppVault内のパスで、スナップショットの内容が保存される場所。このパスを見つけるには、次のコマンドを使用できます：
++
+[source, console]
+----
+kubectl get snapshots <SNAPSHOT_NAME> -n my-app-namespace -o jsonpath='{.status.appArchivePath}'
+----
++
++
+
+
+
+
+
+[listing]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: SnapshotInplaceRestore
+metadata:
+  name: my-cr-name
+  namespace: my-app-namespace
+spec:
+  appVaultRef: appvault-name
+  appArchivePath: my-snapshot-path
+----
++ .（オプション）アプリケーションの特定のリソースのみを選択して復元する必要がある場合は、特定のラベルが付いたリソースを含めるか除外するかを指定するフィルタリングを追加します。
+
++ 注記：Trident Protect は、ユーザーが選択したリソースとの関連性に基づいて、一部のリソースを自動的に選択します。例えば、永続ボリューム要求リソースを選択し、それに関連付けられたポッドがある場合、Trident Protect は、関連付けられたポッドも復元します。
+
++ * *resourceFilter.resourceSelectionCriteria*：（フィルタリングに必須） `Include`または `Exclude`を使用して、resourceMatchersで定義されたリソースを含めるか除外します。含めるリソースまたは除外するリソースを定義するには、以下のresourceMatchersパラメータを追加します：** *resourceFilter.resourceMatchers*：resourceMatcherオブジェクトの配列。この配列に複数の要素を定義した場合、それらはOR演算で一致し、各要素内のフィールド（group、kind、version）はAND演算で一致します。*** *resourceMatchers[].group*：（_オプション_）フィルタリングするリソースのグループ。*** *resourceMatchers[].kind*：（_オプション_）フィルタリングするリソースの種類。*** *resourceMatchers[].version*：（_オプション_）フィルタリングするリソースのバージョン。*** *resourceMatchers[].names*：（_オプション_）フィルタリングするリソースのKubernetes metadata.nameフィールドの名前。*** *resourceMatchers[].namespaces*：（_オプション_）フィルタリングするリソースのKubernetes metadata.nameフィールドにある名前空間。*** *resourceMatchers[].labelSelectors*：（_オプション_） https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors["Kubernetesドキュメント"^]で定義されたリソースのKubernetes metadata.nameフィールド内のラベルセレクタ文字列。例： `"trident.netapp.io/os=linux"`
+
++ 例：
+
++
+
+[source, yaml]
+----
+spec:
+  resourceFilter:
+    resourceSelectionCriteria: "Include"
+    resourceMatchers:
+      - group: my-resource-group-1
+        kind: my-resource-kind-1
+        version: my-resource-version-1
+        names: ["my-resource-names"]
+        namespaces: ["my-resource-namespaces"]
+        labelSelectors: ["trident.netapp.io/os=linux"]
+      - group: my-resource-group-2
+        kind: my-resource-kind-2
+        version: my-resource-version-2
+        names: ["my-resource-names"]
+        namespaces: ["my-resource-namespaces"]
+        labelSelectors: ["trident.netapp.io/os=linux"]
+----
++ . `trident-protect-snapshot-ipr-cr.yaml`ファイルに正しい値を入力したら、CRを適用します。
+
++
+
+[source, console]
+----
+kubectl apply -f trident-protect-snapshot-ipr-cr.yaml
+----
+--
+.CLI を使用する
+--
+.手順
+. 括弧内の値を環境の情報に置き換えて、スナップショットを元の名前空間に復元します。次に例を示します。
++
+[source, console]
+----
+tridentctl-protect create snapshotinplacerestore <my_restore_name> \
+--snapshot <namespace/snapshot_to_restore> \
+-n <application_namespace>
+----
+
+
+--
+====
+
+
+[[check-the-status-of-a-restore-operation]]
+== リストア処理のステータスを確認する
+
+コマンド ラインを使用して、進行中、完了、または失敗した復元処理のステータスを確認できます。
+
+.手順
+. 復元操作のステータスを取得するには、次のコマンドを使用します。括弧内の値は、ご使用の環境の情報に置き換えてください：
++
+[source, console]
+----
+kubectl get backuprestore -n <namespace_name> <my_restore_cr_name> -o jsonpath='{.status}'
+----
+

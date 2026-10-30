@@ -1,0 +1,187 @@
+---
+sidebar: sidebar 
+permalink: trident-protect/trident-protect-cli.html 
+keywords: trident, protect, command line utility, cli, netapp, custom, resources 
+summary: protectctlコマンドを使用して、Trident Protectカスタム リソースを作成したり操作したりできます。 
+---
+= Trident Protect CLI プラグインをインストールします
+:hardbreaks:
+:allow-uri-read: 
+:nofooter: 
+:icons: font
+:linkattrs: 
+:imagesdir: ../media/
+
+
+[role="lead"]
+Trident Protect コマンドライン プラグインを使用できます。これは Trident `tridentctl` ユーティリティの拡張機能であり、Trident Protect カスタム リソース（CR）の作成と操作に使用できます。
+
+
+
+[[install-the-trident-protect-cli-plugin]]
+== Trident Protect CLI プラグインをインストールします
+
+コマンドライン ユーティリティを使用する前に、クラスターにアクセスするために使用するマシンにそれをインストールする必要があります。マシンが x64 と ARM のどちらの CPU を使用しているかに応じて、次の手順に従ってください。
+
+[role="tabbed-block"]
+====
+.Linux AMD64 CPU用プラグインをダウンロード
+--
+.手順
+. Trident Protect CLI プラグインをダウンロードします：
++
+[source, console]
+----
+curl -L -o tridentctl-protect https://github.com/NetApp/tridentctl-protect/releases/download/v26.06.0/tridentctl-protect-linux-amd64
+----
+
+
+--
+.Linux ARM64 CPU用プラグインをダウンロード
+--
+.手順
+. Trident Protect CLI プラグインをダウンロードします：
++
+[source, console]
+----
+curl -L -o tridentctl-protect https://github.com/NetApp/tridentctl-protect/releases/download/v26.06.0/tridentctl-protect-linux-arm64
+----
+
+
+--
+.Mac AMD64 CPU用プラグインをダウンロード
+--
+.手順
+. Trident Protect CLI プラグインをダウンロードします：
++
+[source, console]
+----
+curl -L -o tridentctl-protect https://github.com/NetApp/tridentctl-protect/releases/download/v26.06.0/tridentctl-protect-macos-amd64
+----
+
+
+--
+.Mac ARM64 CPU用プラグインをダウンロード
+--
+.手順
+. Trident Protect CLI プラグインをダウンロードします：
++
+[source, console]
+----
+curl -L -o tridentctl-protect https://github.com/NetApp/tridentctl-protect/releases/download/v26.06.0/tridentctl-protect-macos-arm64
+----
+
+
+--
+====
+. プラグイン バイナリの実行権限を有効にします：
++
+[source, console]
+----
+chmod +x tridentctl-protect
+----
+. プラグインのバイナリを PATH 変数で定義されている場所にコピーします。例えば、 `/usr/bin`または `/usr/local/bin`（昇格した権限が必要になる場合があります）：
++
+[source, console]
+----
+cp ./tridentctl-protect /usr/local/bin/
+----
+. オプションで、プラグインのバイナリをホームディレクトリ内の場所にコピーすることもできます。この場合、場所が PATH 変数の一部であることを確認することをお勧めします：
++
+[source, console]
+----
+cp ./tridentctl-protect ~/bin/
+----
+
+
+
+NOTE: プラグインを PATH 変数の場所にコピーすると、 `tridentctl-protect`または `tridentctl protect`と入力することで、どこからでもプラグインを使用できるようになります。
+
+
+
+[[view-trident-cli-plugin-help]]
+== Trident CLI プラグインのヘルプを表示
+
+プラグインの機能に関する詳細なヘルプを取得するには、組み込みのプラグイン ヘルプ機能を使用できます：
+
+.手順
+. ヘルプ機能を使用して使用方法のガイダンスを表示します：
++
+[source, console]
+----
+tridentctl-protect help
+----
+
+
+
+
+[[enable-command-auto-completion]]
+== コマンドの自動補完を有効にする
+
+Trident Protect CLI プラグインをインストールしたら、特定のコマンドの自動補完を有効にすることができます。
+
+[role="tabbed-block"]
+====
+.Bash シェルの自動補完を有効にする
+--
+.手順
+. 完了スクリプトを作成します：
++
+[source, console]
+----
+tridentctl-protect completion bash > tridentctl-completion.bash
+----
+. スクリプトを格納するための新しいディレクトリをホーム ディレクトリに作成します：
++
+[source, console]
+----
+mkdir -p ~/.bash/completions
+----
+. ダウンロードしたスクリプトを `~/.bash/completions`ディレクトリに移動します：
++
+[source, console]
+----
+mv tridentctl-completion.bash ~/.bash/completions/
+----
+. ホームディレクトリ内の `~/.bashrc`ファイルに次の行を追加します：
++
+[source, console]
+----
+source ~/.bash/completions/tridentctl-completion.bash
+----
+
+
+--
+.Z シェルの自動補完を有効にする
+--
+.手順
+. 完了スクリプトを作成します：
++
+[source, console]
+----
+tridentctl-protect completion zsh > tridentctl-completion.zsh
+----
+. スクリプトを格納するための新しいディレクトリをホーム ディレクトリに作成します：
++
+[source, console]
+----
+mkdir -p ~/.zsh/completions
+----
+. ダウンロードしたスクリプトを `~/.zsh/completions`ディレクトリに移動します：
++
+[source, console]
+----
+mv tridentctl-completion.zsh ~/.zsh/completions/
+----
+. ホームディレクトリ内の `~/.zprofile`ファイルに次の行を追加します：
++
+[source, console]
+----
+source ~/.zsh/completions/tridentctl-completion.zsh
+----
+
+
+--
+====
+.結果
+次回のシェルログイン時には、tridentctl-protect プラグインによるコマンドの自動補完を使用できます。

@@ -1,0 +1,405 @@
+---
+sidebar: sidebar 
+permalink: trident-reco/kerberos-inflight-encryption.html 
+keywords: Trident, backend, storage, encryption, kerberos 
+summary: 暗号化を設定して、Tridentとストレージバックエンドの間のトラフィックを保護できます。 
+---
+= Trident Kerberosによる通信中の暗号化
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Kerberos インフライト暗号化を使用すると、マネージドクラスタとストレージバックエンド間のトラフィックの暗号化を有効にして、データアクセスのセキュリティを向上させることができます。
+
+Trident は、ストレージバックエンドとして ONTAP の Kerberos 暗号化をサポートしています：
+
+* *オンプレミス ONTAP* - Trident は、Red Hat OpenShift および上流の Kubernetes クラスタからオンプレミス ONTAP ボリュームへの NFSv3 および NFSv4 接続での Kerberos 暗号化をサポートします。
+
+
+NFS 暗号化を使用するボリュームを作成、削除、サイズ変更、スナップショット、クローン、読み取り専用クローン、およびインポートできます。
+
+
+
+[[configure-in-flight-kerberos-encryption-with-on-premise-ontap-volumes]]
+== オンプレミス ONTAP ボリュームでインフライト Kerberos 暗号化を設定する
+
+管理対象クラスタとオンプレミス ONTAP ストレージバックエンド間のストレージトラフィックで Kerberos 暗号化を有効にすることができます。
+
+
+NOTE: オンプレミス ONTAP ストレージバックエンドを使用した NFS トラフィックの Kerberos 暗号化は、 `ontap-nas`ストレージドライバーを使用する場合にのみサポートされます。
+
+.開始する前に
+*  `tridentctl`ユーティリティにアクセスできることを確認してください。
+* ONTAP ストレージバックエンドへの管理者アクセス権があることを確認してください。
+* ONTAP ストレージバックエンドから共有するボリュームの名前を必ず確認してください。
+* NFS ボリュームの Kerberos 暗号化をサポートするように ONTAP ストレージ VM を準備しておいてください。手順については、 https://docs.netapp.com/us-en/ontap/nfs-config/create-kerberos-config-task.html["データLIFでKerberosを有効にする"^]を参照してください。
+* Kerberos 暗号化で使用する NFSv4 ボリュームが正しく構成されていることを確認します。NetApp NFSv4 ドメイン設定セクション（13 ページ） https://www.netapp.com/media/16398-tr-3580.pdf["NetApp NFSv4 の機能強化とベストプラクティスガイド"^]を参照してください。
+
+
+
+
+[[add-or-modify-ontap-export-policies]]
+=== ONTAP エクスポートポリシーの追加または変更
+
+ONTAP ストレージ VM ルートボリュームおよびアップストリーム Kubernetes クラスタと共有される ONTAP ボリュームに対して、Kerberos 暗号化をサポートする既存の ONTAP エクスポートポリシーにルールを追加するか、新しいエクスポートポリシーを作成する必要があります。追加するエクスポートポリシールール、または作成する新しいエクスポートポリシーは、次のアクセスプロトコルとアクセス権限をサポートする必要があります（
+
+.アクセス プロトコル
+NFS、NFSv3、および NFSv4 アクセスプロトコルを使用してエクスポートポリシーを構成します。
+
+.アクセスの詳細
+ボリュームのニーズに応じて、3 つの異なるバージョンの Kerberos 暗号化のいずれかを設定できます：
+
+* *Kerberos 5* - （認証と暗号化）
+* *Kerberos 5i* - （ID保護を備えた認証と暗号化）
+* *Kerberos 5p* -（IDとプライバシー保護を使用した認証と暗号化）
+
+
+適切なアクセス権限を持つ ONTAP エクスポート ポリシー ルールを設定します。たとえば、クラスタが Kerberos 5i と Kerberos 5p 暗号化を組み合わせて NFS ボリュームをマウントする場合は、次のアクセス設定を使用します：
+
+|===
+| タイプ | 読み取り専用アクセス | 読み取り/書き込みアクセス | スーパーユーザーアクセス 
+
+
+| UNIX | 有効 | 有効 | 有効 
+
+
+| Kerberos 5i | 有効 | 有効 | 有効 
+
+
+| Kerberos 5p | 有効 | 有効 | 有効 
+|===
+ONTAP エクスポートポリシーとエクスポートポリシールールの作成方法については、次のドキュメントを参照してください：
+
+* https://docs.netapp.com/us-en/ontap/nfs-config/create-export-policy-task.html["エクスポート ポリシーの作成"^]
+* https://docs.netapp.com/us-en/ontap/nfs-config/add-rule-export-policy-task.html["エクスポート ポリシーへのルールの追加"^]
+
+
+
+
+[[create-a-storage-backend]]
+=== ストレージバックエンドを作成する
+
+Kerberos 暗号化機能を含む Trident ストレージバックエンド構成を作成できます。
+
+.タスク概要
+Kerberos暗号化を設定するストレージバックエンド構成ファイルを作成するときに、 `spec.nfsMountOptions`パラメータを使用して3つの異なるバージョンのKerberos暗号化のいずれかを指定できます：
+
+* `spec.nfsMountOptions: sec=krb5`（認証と暗号化）
+* `spec.nfsMountOptions: sec=krb5i`（ID 保護を備えた認証と暗号化）
+* `spec.nfsMountOptions: sec=krb5p`（IDとプライバシー保護を備えた認証と暗号化）
+
+
+Kerberos レベルを 1 つだけ指定します。パラメータリストで複数の Kerberos 暗号化レベルを指定した場合、最初のオプションのみが使用されます。
+
+.手順
+. マネージド クラスターで、次の例を使用してストレージ バックエンド構成ファイルを作成します。括弧内の値<>を環境からの情報に置き換えます：
++
+[source, yaml]
+----
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-ontap-nas-secret
+type: Opaque
+stringData:
+  clientID: <CLIENT_ID>
+  clientSecret: <CLIENT_SECRET>
+---
+apiVersion: trident.netapp.io/v1
+kind: TridentBackendConfig
+metadata:
+  name: backend-ontap-nas
+spec:
+  version: 1
+  storageDriverName: "ontap-nas"
+  managementLIF: <STORAGE_VM_MGMT_LIF_IP_ADDRESS>
+  dataLIF: <PROTOCOL_LIF_FQDN_OR_IP_ADDRESS>
+  svm: <STORAGE_VM_NAME>
+  username: <STORAGE_VM_USERNAME_CREDENTIAL>
+  password: <STORAGE_VM_PASSWORD_CREDENTIAL>
+  nasType: nfs
+  nfsMountOptions: ["sec=krb5i"] #can be krb5, krb5i, or krb5p
+  qtreesPerFlexvol:
+  credentials:
+    name: backend-ontap-nas-secret
+----
+. 前の手順で作成した構成ファイルを使用して、バックエンドを作成します：
++
+[source, console]
+----
+tridentctl create backend -f <backend-configuration-file>
+----
++
+バックエンドの作成に失敗した場合は、バックエンドの構成に問題があります。次のコマンドを実行すると、ログを表示して原因を特定できます：
+
++
+[source, console]
+----
+tridentctl logs
+----
++
+構成ファイルの問題を特定して修正したら、create コマンドを再度実行できます。
+
+
+
+
+
+[[create-a-storage-class]]
+=== ストレージクラスを作成する
+
+Kerberos 暗号化を使用してボリュームをプロビジョニングするためのストレージクラスを作成できます。
+
+.タスク概要
+ストレージクラスオブジェクトを作成するときに、 `mountOptions`パラメータを使用してKerberos暗号化の3つの異なるバージョンのいずれかを指定できます：
+
+* `mountOptions: sec=krb5`（認証と暗号化）
+* `mountOptions: sec=krb5i`（ID 保護を備えた認証と暗号化）
+* `mountOptions: sec=krb5p`（IDとプライバシー保護を備えた認証と暗号化）
+
+
+Kerberos レベルを 1 つだけ指定します。パラメータリストで複数の Kerberos 暗号化レベルを指定した場合、最初のオプションのみが使用されます。ストレージバックエンド構成で指定した暗号化レベルがストレージクラスオブジェクトで指定したレベルと異なる場合は、ストレージクラスオブジェクトが優先されます。
+
+.手順
+. 次の例を使用して、StorageClass Kubernetes オブジェクトを作成します：
++
+[source, yaml]
+----
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ontap-nas-sc
+provisioner: csi.trident.netapp.io
+mountOptions:
+  - sec=krb5i #can be krb5, krb5i, or krb5p
+parameters:
+  backendType: ontap-nas
+  storagePools: ontapnas_pool
+  trident.netapp.io/nasType: nfs
+allowVolumeExpansion: true
+
+----
+. ストレージクラスを作成します：
++
+[source, console]
+----
+kubectl create -f sample-input/storage-class-ontap-nas-sc.yaml
+----
+. ストレージクラスが作成されていることを確認します：
++
+[source, console]
+----
+kubectl get sc ontap-nas-sc
+----
++
+次のような出力が表示されます。
+
++
+[listing]
+----
+NAME         PROVISIONER             AGE
+ontap-nas-sc    csi.trident.netapp.io   15h
+----
+
+
+
+
+[[provision-volumes]]
+=== ボリュームのプロビジョニング
+
+ストレージバックエンドとストレージクラスを作成したら、ボリュームをプロビジョニングできるようになります。手順については、 https://docs.netapp.com/us-en/trident/trident-use/vol-provision.html["ボリュームをプロビジョニングする"^]を参照してください。
+
+
+
+[[configure-in-flight-kerberos-encryption-with-azure-netapp-files-volumes]]
+== Azure NetApp Files ボリュームでインフライト Kerberos 暗号化を設定する
+
+マネージドクラスタと単一のAzure NetApp Filesストレージバックエンド、またはAzure NetApp Filesストレージバックエンドの仮想プール間のストレージトラフィックでKerberos暗号化を有効にすることができます。
+
+.開始する前に
+* 管理対象の Red Hat OpenShift クラスタで Trident が有効になっていることを確認してください。
+*  `tridentctl`ユーティリティにアクセスできることを確認してください。
+* Kerberos 暗号化用の Azure NetApp Files ストレージバックエンドを準備済みであることを確認してください。要件を確認し、 https://learn.microsoft.com/en-us/azure/azure-netapp-files/configure-kerberos-encryption["Azure NetApp Files のドキュメント"^]の手順に従ってください。
+* Kerberos 暗号化で使用する NFSv4 ボリュームが正しく構成されていることを確認します。NetApp NFSv4 ドメイン設定セクション（13 ページ） https://www.netapp.com/media/16398-tr-3580.pdf["NetApp NFSv4 の機能強化とベストプラクティスガイド"^]を参照してください。
+
+
+
+
+[[create-a-storage-backend]]
+=== ストレージバックエンドを作成する
+
+Kerberos 暗号化機能を含む Azure NetApp Files ストレージバックエンド構成を作成できます。
+
+.タスク概要
+Kerberos 暗号化を構成するストレージバックエンド構成ファイルを作成するときに、次の 2 つのレベルのいずれかで適用されるように定義できます：
+
+*  `spec.kerberos`フィールドを使用した*ストレージバックエンドレベル*
+*  `spec.storage.kerberos`フィールドを使用した*仮想プールレベル*
+
+
+仮想プールレベルで設定を定義する場合、ストレージクラスのラベルを使用してプールが選択されます。
+
+どちらのレベルでも、 Kerberos 暗号化の 3 つの異なるバージョンのいずれかを指定できます：
+
+* `kerberos: sec=krb5`（認証と暗号化）
+* `kerberos: sec=krb5i`（ID 保護を備えた認証と暗号化）
+* `kerberos: sec=krb5p`（IDとプライバシー保護を備えた認証と暗号化）
+
+
+.手順
+. 管理対象クラスタで、ストレージバックエンドを定義する必要がある場所（ストレージバックエンドレベルまたは仮想プールレベル）に応じて、次のいずれかの例を使用してストレージバックエンド構成ファイルを作成します。括弧内の値<>を環境からの情報に置き換えます：
++
+[role="tabbed-block"]
+====
+.ストレージバックエンドレベルの例
+--
+[source, yaml]
+----
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-tbc-secret
+type: Opaque
+stringData:
+  clientID: <CLIENT_ID>
+  clientSecret: <CLIENT_SECRET>
+
+---
+apiVersion: trident.netapp.io/v1
+kind: TridentBackendConfig
+metadata:
+  name: backend-tbc
+spec:
+  version: 1
+  storageDriverName: azure-netapp-files
+  subscriptionID: <SUBSCRIPTION_ID>
+  tenantID: <TENANT_ID>
+  location: <AZURE_REGION_LOCATION>
+  serviceLevel: Standard
+  networkFeatures: Standard
+  capacityPools: <CAPACITY_POOL>
+  resourceGroups: <RESOURCE_GROUP>
+  netappAccounts: <NETAPP_ACCOUNT>
+  virtualNetwork: <VIRTUAL_NETWORK>
+  subnet: <SUBNET>
+  nasType: nfs
+  kerberos: sec=krb5i #can be krb5, krb5i, or krb5p
+  credentials:
+    name: backend-tbc-secret
+----
+--
+.仮想プールレベルの例
+--
+[source, yaml]
+----
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-tbc-secret
+type: Opaque
+stringData:
+  clientID: <CLIENT_ID>
+  clientSecret: <CLIENT_SECRET>
+
+---
+apiVersion: trident.netapp.io/v1
+kind: TridentBackendConfig
+metadata:
+  name: backend-tbc
+spec:
+  version: 1
+  storageDriverName: azure-netapp-files
+  subscriptionID: <SUBSCRIPTION_ID>
+  tenantID: <TENANT_ID>
+  location: <AZURE_REGION_LOCATION>
+  serviceLevel: Standard
+  networkFeatures: Standard
+  capacityPools: <CAPACITY_POOL>
+  resourceGroups: <RESOURCE_GROUP>
+  netappAccounts: <NETAPP_ACCOUNT>
+  virtualNetwork: <VIRTUAL_NETWORK>
+  subnet: <SUBNET>
+  nasType: nfs
+  storage:
+    - labels:
+        type: encryption
+      kerberos: sec=krb5i #can be krb5, krb5i, or krb5p
+  credentials:
+    name: backend-tbc-secret
+
+----
+--
+====
+. 前の手順で作成した構成ファイルを使用して、バックエンドを作成します：
++
+[source, console]
+----
+tridentctl create backend -f <backend-configuration-file>
+----
++
+バックエンドの作成に失敗した場合は、バックエンドの構成に問題があります。次のコマンドを実行すると、ログを表示して原因を特定できます：
+
++
+[source, console]
+----
+tridentctl logs
+----
++
+構成ファイルの問題を特定して修正したら、create コマンドを再度実行できます。
+
+
+
+
+
+[[create-a-storage-class]]
+=== ストレージクラスを作成する
+
+Kerberos 暗号化を使用してボリュームをプロビジョニングするためのストレージクラスを作成できます。
+
+.手順
+. 次の例を使用して、StorageClass Kubernetes オブジェクトを作成します：
++
+[source, yaml]
+----
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-nfs
+provisioner: csi.trident.netapp.io
+parameters:
+  backendType: azure-netapp-files
+  trident.netapp.io/nasType: nfs
+  selector: type=encryption
+----
+. ストレージクラスを作成します：
++
+[source, console]
+----
+kubectl create -f sample-input/storage-class-sc-nfs.yaml
+----
+. ストレージクラスが作成されていることを確認します：
++
+[source, console]
+----
+kubectl get sc -sc-nfs
+----
++
+次のような出力が表示されます。
+
++
+[listing]
+----
+NAME         PROVISIONER             AGE
+sc-nfs       csi.trident.netapp.io   15h
+----
+
+
+
+
+[[provision-volumes]]
+=== ボリュームのプロビジョニング
+
+ストレージバックエンドとストレージクラスを作成したら、ボリュームをプロビジョニングできるようになります。手順については、 https://docs.netapp.com/us-en/trident/trident-use/vol-provision.html["ボリュームをプロビジョニングする"^]を参照してください。

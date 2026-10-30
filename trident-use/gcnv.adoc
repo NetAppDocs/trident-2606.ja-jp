@@ -1,0 +1,241 @@
+---
+sidebar: sidebar 
+permalink: trident-use/gcnv.html 
+keywords: Trident backend, Google Cloud NetApp Volumes, NAS, NFS, SMB, file storage, GKE 
+summary: Google Cloud NetApp Volumes からストレージをプロビジョニングするように Trident を設定します。 
+---
+= Google Cloud NetApp Volumes を設定
+:allow-uri-read: 
+
+
+[role="lead"]
+Google Cloud NetApp Volumes を Trident のバックエンドとして設定し、Kubernetes ワークロード用のストレージをプロビジョニングできます。
+
+
+
+[[overview]]
+== 概要
+
+Trident は、NAS（NFS および SMB）とブロック（iSCSI）ワークロードの両方で Google Cloud NetApp Volumes をサポートしています。
+
+* NASワークロードは `google-cloud-netapp-volumes`バックエンドを使用します
+* ブロック（iSCSI）ワークロードは `google-cloud-netapp-volumes-san`バックエンドを使用します
+
+
+NASボリュームはファイルベースのストレージを提供し、NFSまたはSMBプロトコルを使用してアクセスされます。これらのボリュームは、複数のポッドまたはノード間での共有アクセスをサポートします。
+
+ブロックボリュームは生のブロックストレージを提供し、Kubernetesノードに接続されたiSCSIデバイスとしてアクセスされます。これらのボリュームは、アプリケーションがブロックレベルのアクセスを必要とする場合に使用されます。
+
+これは以下の環境に適用されます：
+
+* Trident 26.02以降
+* Google Kubernetes Engine（GKE）または Red Hat OpenShift
+* Google Cloud NetApp Volumes ストレージプール
+
+
+ブロック（iSCSI）ストレージを構成するには、link:gcnv-block.html["ブロックストレージ（iSCSI）の設定"]を参照してください。
+
+
+
+[[prepare-to-configure]]
+== 設定の準備
+
+Cloud IDを使用すると、Kubernetesワークロードは静的な認証情報を使用する代わりに、ワークロードIDとして認証することでGoogle Cloudリソースにアクセスできるようになります。
+
+Google Cloud NetApp Volumes でクラウド ID を使用するには、以下が必要です：
+
+* Google Kubernetes Engine（GKE）を使用してデプロイされたKubernetesクラスター
+* GKEクラスタでワークロードIDが有効になっており、ノードプールでメタデータサーバーが有効になっています。
+* Google Cloud NetApp Volumes 管理者ロール（(`roles/netapp.admin`）または同等のカスタムロールを持つ Google Cloud サービスアカウント
+* クラウド プロバイダが `GCP`に設定され、クラウドID注釈が構成された状態でTridentがインストールされています
+
+
+[role="tabbed-block"]
+====
+.Trident オペレータ
+--
+Trident オペレータを使用して Trident をインストールするには、 `tridentorchestrator_cr.yaml`を編集します：
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentOrchestrator
+metadata:
+  name: trident
+spec:
+  namespace: trident
+  cloudProvider: "GCP"
+  cloudIdentity: "iam.gke.io/gcp-service-account: cloudvolumes-admin-sa@mygcpproject.iam.gserviceaccount.com"
+----
+--
+.Helm
+--
+Helmを使用してTridentをインストールする際に、クラウド プロバイダとクラウドIDを設定します：
+
+[listing]
+----
+helm install trident trident-operator-100.6.0.tgz \
+  --set cloudProvider=GCP \
+  --set cloudIdentity="iam.gke.io/gcp-service-account: cloudvolumes-admin-sa@mygcpproject.iam.gserviceaccount.com"
+----
+--
+.tridentctl
+--
+クラウド プロバイダとクラウドIDを指定してTridentをインストールします：
+
+[listing]
+----
+tridentctl install \
+  --cloud-provider=GCP \
+  --cloud-identity="iam.gke.io/gcp-service-account: cloudvolumes-admin-sa@mygcpproject.iam.gserviceaccount.com" \
+  -n trident
+----
+--
+====
+
+
+[[configure-nas-storage]]
+[[nas]]
+== NASストレージの設定
+
+
+NOTE: Google Cloud NetApp Volumes UNIFIEDストレージプールの場合、Tridentはボリューム操作中にUNIFIED固有のネーミングおよび検証ルールを適用します。
+
+ボリュームを検索する際、Tridentは複数の互換性のあるボリューム名のバリアント（ハイフン形式やアンダースコア形式など）を評価することで、インポートと検出の信頼性を向上させることができます。
+
+
+
+[[driver-details]]
+=== ドライバの詳細
+
+Tridentは、Google Cloud NetApp VolumesからNASストレージをプロビジョニングするための `google-cloud-netapp-volumes`ドライバーを提供します。
+
+このドライバは、以下のアクセスモードをサポートしています。
+
+* ReadWriteOnce（RWO）
+* ReadOnlyMany（ROX）
+* ReadWriteMany（RWX）
+* ReadWriteOncePod（RWOP）
+
+
+[cols="2,1,1,2,2"]
+|===
+| Driver | プロトコル | volumeMode | サポートされているアクセスモード | サポートされているファイルシステム 
+
+
+| `google-cloud-netapp-volumes`  a| 
+NFS SMB
+ a| 
+Filesystem
+ a| 
+RWO、ROX、RWX、RWOP
+ a| 
+`nfs`, `smb`
+
+|===
+
+
+[[configure-a-trident-nas-backend]]
+=== Trident NASバックエンドを設定する
+
+[source, yaml]
+----
+apiVersion: trident.netapp.io/v1
+kind: TridentBackendConfig
+metadata:
+  name: gcnv-nas
+  namespace: trident
+spec:
+  version: 1
+  storageDriverName: google-cloud-netapp-volumes
+  projectNumber: "<project-number>"
+  location: "<region>"
+  sdkTimeout: "600"
+  storage:
+  - labels:
+      cloud: gcp
+    network: "<vpc-network>"
+----
+
+
+[[provision-nas-volumes]]
+=== NAS ボリュームのプロビジョニング
+
+NASボリュームは、 `google-cloud-netapp-volumes`バックエンドを使用してプロビジョニングされ、NFSおよびSMBプロトコルをサポートします。
+
+
+
+==== StorageClass（NFSボリューム用）
+
+NFSボリュームをプロビジョニングするには、 `nasType`を `nfs`に設定します。
+
+[source, yaml]
+----
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gcnv-nfs
+provisioner: csi.trident.netapp.io
+parameters:
+  backendType: "google-cloud-netapp-volumes"
+  trident.netapp.io/nasType: "nfs"
+allowVolumeExpansion: true
+----
+
+
+==== StorageClass（SMBボリューム用）
+
+SMB ボリュームをプロビジョニングするには、 `nasType`を `smb`に設定してクレデンシャルを指定します。
+
+[source, yaml]
+----
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gcnv-smb
+provisioner: csi.trident.netapp.io
+parameters:
+  backendType: "google-cloud-netapp-volumes"
+  trident.netapp.io/nasType: "smb"
+  csi.storage.k8s.io/node-stage-secret-name: "smbcreds"
+  csi.storage.k8s.io/node-stage-secret-namespace: "default"
+allowVolumeExpansion: true
+----
+
+
+==== PersistentVolumeClaim の例（RWX）
+
+[source, yaml]
+----
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gcnv-nas-rwx
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: gcnv-nfs
+----
+
+
+==== PersistentVolumeClaim の例（RWO）
+
+[source, yaml]
+----
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gcnv-nas-rwo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: gcnv-nfs
+----
+
+NOTE: NASボリュームは `volumeMode: Filesystem`を使用します。

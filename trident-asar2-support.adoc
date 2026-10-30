@@ -1,0 +1,58 @@
+---
+sidebar: sidebar 
+permalink: trident-asar2-support.html 
+keywords: asar2, trident, fcp, nvme, tcp, nvme tcp, fibre channel 
+summary: NetApp Trident は、iSCSI および NVMe/TCP 用の ONTAP ASA r2 をサポートしています。 
+---
+= ONTAP ASA r2ストレージシステムに対するNetApp Tridentのサポート
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ./media/
+
+
+[role="lead"]
+NetApp Trident 25.02以降では、NetApp ASA r2システムをストレージバックエンドとしてサポートしています。詳細については、link:https://docs.netapp.com/us-en/asa-r2/get-started/learn-about.html["ASA r2システム"^]を参照してください。
+
+ASA r2システムには `ontap-san`ドライバが必要です。TridentはASA r2システムの `ontap-san-economy`ドライバをサポートしていません。
+
+バックエンド構成で `ontap-san`を `storageDriverName`として指定すると、Tridentは自動的にASA r2ストレージシステムを検出します。
+
+Tridentは、Trident protectを使用してASA r2システムに限定的なデータ保護を提供します。
+
+サポートされているSANプロトコルは、Tridentのバージョンによって異なります：
+
+* Trident 25.02以降はiSCSIをサポートします。
+* Trident 25.06以降では、iSCSIに加えてNVMe/TCPもサポートされます。
+* Trident 25.10以降では、iSCSIおよびNVMe/TCPに加えてFCもサポートされています。
+
+
+ONTAPバックエンドストレージ用のStorage Virtual Machine（SVM）に少なくとも1つのアグリゲートを割り当てる必要があります。手順については、link:https://kb.netapp.com/on-prem/ASAr2/ASAr2_KBs/su_create_by_SVM_admin_using_CLI_fails_with_error_No_candidate_aggregates_are_available_for_storage_services["ASA r2システムでのSVMへのアグリゲートの割り当て"^]を参照してください。
+
+
+
+[[supported-operations]]
+== サポートされている操作
+
+* 永続ボリューム（PV）のプロビジョニング
+* 動的ボリュームプロビジョニング
+* ボリュームの作成と削除
+* ボリュームのクローニング
+* ボリュームの拡張
+* ストレージクラスの管理
+
+
+
+
+[[unsupported-operations]]
+== サポートされていない操作
+
+* LUKS暗号化
+* SnapMirrorボリューム レプリケーション
+* アグリゲートの使用量の制限
+* スペース予約モード
+* Snapshot 数
+* 階層化
+
+
+詳細については、link:https://docs.netapp.com/us-en/trident/trident-use/ontap-san-examples.html["ONTAP SAN 構成オプションと例"^]を参照してください。

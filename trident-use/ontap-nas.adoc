@@ -1,0 +1,82 @@
+---
+sidebar: sidebar 
+permalink: trident-use/ontap-nas.html 
+keywords: trident backend, ontap nas, ontap-nas, ontap-nas-economy, ontap-nas-flexgroups, fsx, drivers, access modes, rwo, rwx, rwp, rwop, file system 
+summary: ONTAP NAS ドライバーを使用した ONTAP バックエンドの設定方法について学習します。 
+---
+= ONTAP NAS ドライバの概要
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+ONTAP および Cloud Volumes ONTAP NAS ドライバーを使用した ONTAP バックエンドの設定方法について説明します。
+
+
+
+[[ontap-nas-driver-details]]
+== ONTAP NAS ドライバーの詳細
+
+Tridentは、ONTAPクラスタと通信するための以下のNASストレージドライバを提供します。サポートされているアクセスモードは次のとおりです：_ReadWriteOnce_（RWO）、_ReadOnlyMany_（ROX）、_ReadWriteMany_（RWX）、_ReadWriteOncePod_（RWOP）。
+
+[cols="2, 1, 1, 2, 2"]
+|===
+| Driver | プロトコル | volumeMode | サポートされているアクセスモード | サポートされているファイルシステム 
+
+
+| `ontap-nas`  a| 
+NFS SMB
+ a| 
+Filesystem
+ a| 
+RWO、ROX、RWX、RWOP
+ a| 
+"", `nfs`, `smb`
+
+
+
+| `ontap-nas-economy`  a| 
+NFS SMB
+ a| 
+Filesystem
+ a| 
+RWO、ROX、RWX、RWOP
+ a| 
+"", `nfs`, `smb`
+
+
+
+| `ontap-nas-flexgroup`  a| 
+NFS SMB
+ a| 
+Filesystem
+ a| 
+RWO、ROX、RWX、RWOP
+ a| 
+"", `nfs`, `smb`
+
+|===
+[WARNING]
+====
+*  `ontap-san-economy`を使用するのは、永続ボリュームの使用数がlink:https://docs.netapp.com/us-en/ontap/volumes/storage-limits-reference.html["サポートされているONTAPボリューム制限"^]を超えることが予想される場合のみです。
+*  `ontap-nas-economy`を使用するのは、永続ボリュームの使用数がlink:https://docs.netapp.com/us-en/ontap/volumes/storage-limits-reference.html["サポートされているONTAPボリューム制限"^]を超えることが予想され、かつ `ontap-san-economy`ドライバーを使用できない場合のみです。
+* データ保護、ディザスタリカバリ、モビリティの必要性が予想される場合は、使用しないでください `ontap-nas-economy`。
+* NetAppでは、ontap-san以外のすべてのONTAPドライバーでFlexvolの自動拡張を使用することは推奨されません。回避策として、Tridentはスナップショット リザーブの使用をサポートし、それに応じてFlexvolボリュームを拡張します。
+
+
+====
+
+
+[[user-permissions]]
+== ユーザー権限
+
+Tridentは、ONTAPまたはSVM管理者として実行されることが想定されており、通常は `admin`クラスタユーザーまたは `vsadmin`SVMユーザー、または同じロールを持つ別の名前のユーザーを使用します。
+
+Amazon FSx for NetApp ONTAP環境では、TridentはONTAPまたはSVM管理者として実行されることが想定されており、クラスタ `fsxadmin`ユーザーまたは `vsadmin`SVMユーザー、または同じロールを持つ別の名前のユーザーを使用します。 `fsxadmin`ユーザーは、クラスタ管理者ユーザーの限定的な代替です。
+
+
+NOTE:  `limitAggregateUsage`パラメータを使用する場合は、クラスタ管理者の権限が必要です。Amazon FSx for NetApp ONTAPをTridentで使用する場合、 `limitAggregateUsage`パラメータは `vsadmin`および `fsxadmin`ユーザアカウントでは機能しません。このパラメータを指定すると、設定処理は失敗します。
+
+ONTAP 内でより制限的なロールを作成し、Trident ドライバーで使用することは可能ですが、推奨しません。Trident のほとんどの新しいリリースでは、考慮する必要がある追加の API が呼び出されるため、アップグレードが困難になり、エラーが発生しやすくなります。

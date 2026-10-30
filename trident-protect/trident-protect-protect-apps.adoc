@@ -1,0 +1,510 @@
+---
+sidebar: sidebar 
+permalink: trident-protect/trident-protect-protect-apps.html 
+keywords: protect, snapshots, demand, configuration, cluster, appvault 
+summary: 自動化された保護ポリシーまたはアドホックベースでスナップショットとバックアップを作成し、すべてのアプリを保護します。 
+---
+= Trident Protectを使用してアプリケーションを保護
+:hardbreaks:
+:allow-uri-read: 
+:nofooter: 
+:icons: font
+:linkattrs: 
+:imagesdir: ../media/
+
+
+[role="lead"]
+Trident Protectで管理されているすべてのアプリを、自動化された保護ポリシーまたはアドホックベースでスナップショットとバックアップを作成して保護できます。
+
+
+NOTE: Trident Protectを設定して、データ保護操作中にファイルシステムをフリーズおよびフリーズ解除することができます。link:trident-protect-requirements.html#protecting-data-with-kubevirt-vms["Trident Protectを使用したファイルシステムのフリーズの設定の詳細については、こちらをご覧ください"]。
+
+
+
+[[create-an-on-demand-snapshot]]
+== オンデマンドスナップショットを作成する
+
+オンデマンド スナップショットはいつでも作成できます。
+
+
+NOTE: クラスタを対象としたリソースは、アプリケーション定義で明示的に参照されている場合、またはいずれかのアプリケーション名前空間への参照がある場合、バックアップ、Snapshot、またはクローンに含まれます。
+
+[role="tabbed-block"]
+====
+.CR を使用してスナップショットを作成する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-snapshot-cr.yaml`という名前を付けます。
+. 作成したファイルで、次の属性を設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.applicationRef*：スナップショットを作成するアプリケーションの Kubernetes 名。
+** *spec.appVaultRef*：（_必須_）スナップショットの内容（メタデータ）を保存するAppVaultの名前。
+** *spec.reclaimPolicy*：（_オプション_）スナップショット CR が削除されたときに、スナップショットの AppArchive に対して何が起こるかを定義します。つまり、 `Retain`に設定されている場合でも、スナップショットは削除されます。有効なオプション：
++
+*** `Retain`（デフォルト）
+*** `Delete`
++
+[source, yaml]
+----
+apiVersion: protect.trident.netapp.io/v1
+kind: Snapshot
+metadata:
+  namespace: my-app-namespace
+  name: my-cr-name
+spec:
+  applicationRef: my-application
+  appVaultRef: appvault-name
+  reclaimPolicy: Delete
+----
+
+
+
+
+.  `trident-protect-snapshot-cr.yaml`ファイルに正しい値を入力したら、CRを適用します。
++
+[source, console]
+----
+kubectl apply -f trident-protect-snapshot-cr.yaml
+----
+
+
+--
+.CLI を使用してスナップショットを作成する
+--
+.手順
+. 括弧内の値を環境の情報に置き換えてスナップショットを作成します。次に例を示します。
++
+[source, console]
+----
+tridentctl-protect create snapshot <my_snapshot_name> --appvault <my_appvault_name> --app <name_of_app_to_snapshot> -n <application_namespace>
+----
+
+
+--
+====
+
+
+[[create-an-on-demand-backup]]
+== オンデマンド バックアップを作成する
+
+アプリはいつでもバックアップできます。
+
+
+NOTE: クラスタを対象としたリソースは、アプリケーション定義で明示的に参照されている場合、またはいずれかのアプリケーション名前空間への参照がある場合、バックアップ、Snapshot、またはクローンに含まれます。
+
+.開始する前に
+AWS セッショントークンの有効期限が、長時間実行される s3 バックアップ処理に十分であることを確認します。バックアップ処理中にトークンの有効期限が切れると、処理が失敗する可能性があります。
+
+* 現在のセッショントークンの有効期限を確認する方法の詳細については、 https://docs.aws.amazon.com/STS/latest/APIReference/API_GetSessionToken.html["AWS API ドキュメント"^]を参照してください。
+* AWS リソースの認証情報の詳細については、 https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html["AWS IAM ドキュメント"^]を参照してください。
+
+
+[role="tabbed-block"]
+====
+.CR を使用してバックアップを作成する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-backup-cr.yaml`という名前を付けます。
+. 作成したファイルで、次の属性を設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.applicationRef*：（_必須_）バックアップするアプリケーションの Kubernetes 名。
+** *spec.appVaultRef*：（_必須_）バックアップコンテンツを保存するAppVaultの名前。
+** *spec.dataMover*：（_オプション_）バックアップ操作に使用するバックアップ ツールを示す文字列。可能な値（大文字と小文字が区別されます）：
++
+*** `Restic`
+*** `Kopia`（デフォルト）
+
+
+** *spec.reclaimPolicy*：（_オプション_）クレームから解放されたときにバックアップに何が起こるかを定義します。有効な値は次のとおりです。
++
+*** `Delete`
+*** `Retain`（デフォルト）
+
+
+** *spec.snapshotRef*：（_オプション_）：バックアップのソースとして使用するスナップショットの名前。指定しない場合は、一時ボリュームが作成され、バックアップされます。
++
+YAMLの例：
+
++
+[source, yaml]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: Backup
+metadata:
+  namespace: my-app-namespace
+  name: my-cr-name
+spec:
+  applicationRef: my-application
+  appVaultRef: appvault-name
+  dataMover: Kopia
+----
+
+
+.  `trident-protect-backup-cr.yaml`ファイルに正しい値を入力したら、CRを適用します。
++
+[source, console]
+----
+kubectl apply -f trident-protect-backup-cr.yaml
+----
+
+
+--
+.CLIを使用してバックアップを作成する
+--
+.手順
+. 括弧内の値を環境の情報に置き換えてバックアップを作成します。次に例を示します。
++
+[source, console]
+----
+tridentctl-protect create backup <my_backup_name> --appvault <my-vault-name> --app <name_of_app_to_back_up> --data-mover <Kopia_or_Restic> -n <application_namespace>
+----
++
+オプションで `--full-backup`フラグを使用して、バックアップを非増分にするかどうかを指定できます。デフォルトでは、すべてのバックアップは増分バックアップになります。このフラグを使用すると、バックアップは非増分になります。ベストプラクティスとしては、定期的にフル バックアップを実行し、その間に増分バックアップを実行して、リストアに伴うリスクを最小限に抑えます。
+
+
+
+--
+====
+
+
+[[supported-backup-annotations]]
+=== サポートされているバックアップアノテーション
+
+次の表は、バックアップ CR を作成するときに使用できる注釈を示しています：
+
+[cols="2,1,3,1"]
+|===
+| 注釈 | タイプ | 概要 | デフォルト値 
+
+
+| protect.trident.netapp.io/full-backup | string | バックアップを非増分にするかどうかを指定します。 `true`に設定すると、非増分バックアップが作成されます。ベストプラクティスとしては、定期的にフル バックアップを実行し、その間に増分バックアップを実行して、リストアに伴うリスクを最小限に抑えます。 | "false" 
+
+
+| protect.trident.netapp.io/snapshot-completion-timeout | string | スナップショット処理全体が完了するまでに許容される最大時間。 | 「60m」 
+
+
+| protect.trident.netapp.io/volume-snapshots-ready-to-use-timeout | string | ボリューム スナップショットが使用可能状態になるまでに許容される最大時間。 | "30分" 
+
+
+| protect.trident.netapp.io/ボリュームスナップショット作成タイムアウト | string | ボリューム スナップショットの作成に許可される最大時間。 | 「5m」 
+
+
+| protect.trident.netapp.io/pvc-bind-timeout-sec | string | 新しく作成されたPersistentVolumeClaims（PVC）が `Bound`フェーズに到達するまで待機する最大時間（秒単位）。この時間を超えると処理は失敗します。 | 「1200」（20分） 
+|===
+
+
+[[create-a-data-protection-schedule]]
+== データ保護スケジュールを作成する
+
+保護ポリシーは、定義されたスケジュールでスナップショット、バックアップ、またはその両方を作成してアプリを保護します。スナップショットとバックアップを時間ごと、日ごと、週ごと、月ごとに作成するように選択でき、保持するコピーの数を指定できます。full-backup-rule アノテーションを使用して、非増分フル バックアップをスケジュールできます。デフォルトでは、すべてのバックアップは増分バックアップになります。フル バックアップを定期的に実行し、その間に増分バックアップを実行することで、復元に伴うリスクを軽減できます。
+
+[NOTE]
+====
+* スナップショットのみのスケジュールを作成するには、 `backupRetention`をゼロに設定し、 `snapshotRetention`をゼロより大きい値に設定します。 `snapshotRetention`をゼロに設定すると、スケジュールされたバックアップでは引き続きスナップショットが作成されますが、これらは一時ボリュームであり、バックアップが完了するとすぐに削除されます。
+* クラスタを対象としたリソースは、アプリケーション定義で明示的に参照されている場合、またはいずれかのアプリケーション名前空間への参照がある場合、バックアップ、Snapshot、またはクローンに含まれます。
+
+
+====
+[role="tabbed-block"]
+====
+.CRを使用してスケジュールを作成する
+--
+.手順
+. カスタムリソース（CR）ファイルを作成し、 `trident-protect-schedule-cr.yaml`という名前を付けます。
+. 作成したファイルで、次の属性を設定します：
++
+** *metadata.name*：（_必須_）このカスタム リソースの名前。環境に合わせて一意かつ適切な名前を選択してください。
+** *spec.dataMover*：（_オプション_）バックアップ操作に使用するバックアップ ツールを示す文字列。可能な値（大文字と小文字が区別されます）：
++
+*** `Restic`
+*** `Kopia`（デフォルト）
+
+
+** *spec.applicationRef*：バックアップするアプリケーションの Kubernetes 名。
+** *spec.appVaultRef*：（_必須_）バックアップコンテンツを保存するAppVaultの名前。
+** *spec.backupRetention*：（_必須_）保持するバックアップの数。ゼロは、バックアップを作成しないことを示します（スナップショットのみ）。
+** *spec.backupReclaimPolicy*：（_オプション_）保持期間中にバックアップ CR が削除された場合に、バックアップに何が起こるかを決定します。保持期間が過ぎると、バックアップは常に削除されます。可能な値（大文字と小文字が区別されます）：
++
+*** `Retain`（デフォルト）
+*** `Delete`
+
+
+** *spec.snapshotRetention*：（_必須_）保持するスナップショットの数。ゼロはスナップショットを作成しないことを示します。
+** *spec.snapshotReclaimPolicy*：（_オプション_）保持期間中にスナップショット CR が削除された場合にスナップショットに何が起こるかを決定します。保持期間が過ぎると、スナップショットは常に削除されます。可能な値（大文字と小文字が区別されます）：
++
+*** `Retain`
+*** `Delete`（デフォルト）
+
+
+** *spec.granularity*：スケジュールを実行する頻度。可能な値と、必須の関連フィールド：
++
+*** `Hourly`（ `spec.minute`を指定する必要があります）
+*** `Daily`（ `spec.minute`と `spec.hour`を指定する必要があります）
+*** `Weekly`（ `spec.minute, spec.hour`、 `spec.dayOfWeek`を指定する必要があります）
+*** `Monthly`（ `spec.minute, spec.hour`、 `spec.dayOfMonth`を指定する必要があります）
+*** `Custom`
+
+
+** *spec.dayOfMonth*：（_オプション_）スケジュールを実行する月の日付（1 - 31）。粒度が `Monthly`に設定されている場合、このフィールドは必須です。値は文字列として指定する必要があります。
+** *spec.dayOfWeek*：（_オプション_）スケジュールを実行する曜日（0 - 7）。値 0 または 7 は日曜日を示します。粒度が `Weekly`に設定されている場合、このフィールドは必須です。値は文字列として指定する必要があります。
+** *spec.hour*：（_オプション_）スケジュールを実行する時刻（0 - 23）。粒度が `Daily`、 `Weekly`、または `Monthly`に設定されている場合、このフィールドは必須です。値は文字列として指定する必要があります。
+** *spec.minute*：（_オプション_）スケジュールを実行する時刻の分（0～59）。このフィールドは、粒度が `Hourly`、 `Daily`、 `Weekly`、または `Monthly`に設定されている場合は必須です。値は文字列として指定する必要があります。
+** *spec.runImmediately*: （_オプション_） スケジュールが作成されたときに、一度限りの即時ベースライン実行（保持設定に基づくバックアップおよび/またはスナップショット）をトリガーするには、 `true`に設定します。デフォルトは `false`。これはその後の繰り返し実行には影響しません。
++
+バックアップとスナップショットのスケジュールの YAML の例：
+
++
+[source, yaml]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: Schedule
+metadata:
+  namespace: my-app-namespace
+  name: my-cr-name
+spec:
+  dataMover: Kopia
+  applicationRef: my-application
+  appVaultRef: appvault-name
+  backupRetention: "15"
+  snapshotRetention: "15"
+  granularity: Daily
+  hour: "0"
+  minute: "0"
+----
++
+スナップショットのみのスケジュールの YAML の例：
+
++
+[source, yaml]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: Schedule
+metadata:
+  namespace: my-app-namespace
+  name: my-snapshot-schedule
+spec:
+  applicationRef: my-application
+  appVaultRef: appvault-name
+  backupRetention: "0"
+  snapshotRetention: "15"
+  granularity: Daily
+  hour: "2"
+  minute: "0"
+----
++
+即時実行スケジュールのYAML例：
+
++
+[source, yaml]
+----
+---
+apiVersion: protect.trident.netapp.io/v1
+kind: Schedule
+metadata:
+  namespace: my-app-namespace
+  name: my-daily-schedule-run-immediately
+spec:
+  applicationRef: my-application
+  appVaultRef: appvault-name
+  backupRetention: "7"
+  snapshotRetention: "7"
+  granularity: Daily
+  hour: "3"
+  minute: "0"
+  runImmediately: true
+----
+
+
+.  `trident-protect-schedule-cr.yaml`ファイルに正しい値を入力したら、CRを適用します。
++
+[source, console]
+----
+kubectl apply -f trident-protect-schedule-cr.yaml
+----
+
+
+--
+.CLI を使用してスケジュールを作成する
+--
+.手順
+. 括弧内の値を環境の情報に置き換えて、保護スケジュールを作成します。次に例を示します。
++
+
+NOTE:  `tridentctl-protect create schedule --help`を使用すると、このコマンドの詳細なヘルプ情報を表示できます。
+
++
+[source, console]
+----
+tridentctl-protect create schedule <my_schedule_name> \
+  --appvault <my_appvault_name> \
+  --app <name_of_app_to_snapshot> \
+  --backup-retention <how_many_backups_to_retain> \
+  --backup-reclaim-policy <Retain|Delete (default Retain)> \
+  --data-mover <Kopia_or_Restic> \
+  --day-of-month <day_of_month_to_run_schedule> \
+  --day-of-week <day_of_week_to_run_schedule> \
+  --granularity <frequency_to_run> \
+  --hour <hour_of_day_to_run> \
+  --minute <minute_of_hour_to_run> \
+  --recurrence-rule <recurrence> \
+  --snapshot-retention <how_many_snapshots_to_retain> \
+  --snapshot-reclaim-policy <Retain|Delete (default Delete)> \
+  --full-backup-rule <string> \
+  --run-immediately <true|false> \
+  -n <application_namespace>
+----
++
+次のフラグを使用すると、スケジュールをさらに制御できます：
+
++
+** *フル バックアップのスケジュール設定*： `--full-backup-rule`フラグを使用して、非増分フル バックアップをスケジュール設定します。このフラグは `--granularity Daily`でのみ機能します。有効な値は次のとおりです。
++
+*** `Always`：毎日フル バックアップを作成します。
+*** 特定の曜日：1つ以上の曜日をカンマで区切って指定します（例： `"Monday,Thursday"`）。有効な値：Monday、Tuesday、Wednesday、Thursday、Friday、Saturday、Sunday。
++
+
+NOTE:  `--full-backup-rule`フラグは、時間単位、週単位、または月単位の粒度では機能しません。
+
+
+
+** *即時ベースライン保護*:  `--run-immediately true`を使用して、最初のスケジュール実行時間を待つのではなく、スケジュールが作成された時点で直ちに初期バックアップまたはスナップショットを作成します。デフォルトは `false`です。
+** *スナップショットのみのスケジュール*： `--backup-retention 0`を設定し、 `--snapshot-retention`に0より大きい値を指定します。
+
+
+
+
+--
+====
+
+
+[[supported-schedule-annotations]]
+=== サポートされているスケジュール注釈
+
+次の表は、スケジュール CR を作成するときに使用できる注釈を示しています：
+
+[cols="2,1,3,1"]
+|===
+| 注釈 | タイプ | 概要 | デフォルト値 
+
+
+| protect.trident.netapp.io/full-backup-rule | string | フル バックアップをスケジュールするためのルールを指定します。 `Always`に設定して常時フル バックアップを実行するか、要件に応じてカスタマイズできます。たとえば、日単位の粒度を選択した場合、フル バックアップを実行する曜日を指定できます（例： `"Monday,Thursday"`）。有効な曜日の値は、Monday、Tuesday、Wednesday、Thursday、Friday、Saturday、Sundayです。この注釈は、 `granularity`が `Daily`に設定されているスケジュールでのみ使用できます。 | 未設定（すべてのバックアップは増分） 
+
+
+| protect.trident.netapp.io/snapshot-completion-timeout | string | スナップショット処理全体が完了するまでに許容される最大時間。 | 「60m」 
+
+
+| protect.trident.netapp.io/volume-snapshots-ready-to-use-timeout | string | ボリューム スナップショットが使用可能状態になるまでに許容される最大時間。 | "30分" 
+
+
+| protect.trident.netapp.io/ボリュームスナップショット作成タイムアウト | string | ボリューム スナップショットの作成に許可される最大時間。 | 「5m」 
+
+
+| protect.trident.netapp.io/pvc-bind-timeout-sec | string | 新しく作成されたPersistentVolumeClaims（PVC）が `Bound`フェーズに到達するまで待機する最大時間（秒単位）。この時間を超えると処理は失敗します。 | 「1200」（20分） 
+|===
+
+
+[[delete-a-snapshot]]
+== スナップショットを削除する
+
+不要になったスケジュール済みスナップショットまたはオンデマンド スナップショットを削除します。
+
+.手順
+. スナップショットに関連付けられているスナップショット CR を削除します：
++
+[source, console]
+----
+kubectl delete snapshot <snapshot_name> -n my-app-namespace
+----
+
+
+
+
+[[delete-a-backup]]
+== バックアップを削除する
+
+不要になったスケジュール バックアップまたはオンデマンド バックアップを削除します。
+
+
+NOTE: オブジェクト ストレージからすべてのバックアップ データを削除するために、回収ポリシーが `Delete`に設定されていることを確認してください。偶発的なデータ損失を回避するため、ポリシーのデフォルト設定は `Retain`です。ポリシーが `Delete`に変更されない場合、バックアップ データはオブジェクト ストレージに残るため、手動で削除する必要があります。
+
+.手順
+. バックアップに関連付けられているバックアップ CR を削除します：
++
+[source, console]
+----
+kubectl delete backup <backup_name> -n my-app-namespace
+----
+
+
+
+
+[[check-the-status-of-a-backup-operation]]
+== バックアップ操作のステータスを確認する
+
+コマンド ラインを使用して、進行中、完了、または失敗したバックアップ操作のステータスを確認できます。
+
+.手順
+. バックアップ操作のステータスを取得するには、次のコマンドを使用します。括弧内の値は、ご使用の環境の情報に置き換えてください：
++
+[source, console]
+----
+kubectl get backup -n <namespace_name> <my_backup_cr_name> -o jsonpath='{.status}'
+----
+
+
+
+
+[[enable-backup-and-restore-for-azure-netapp-files-anf-operations]]
+== azure-netapp-files（ANF）操作のバックアップとリストアを有効にする
+
+Trident Protectをインストールした場合、azure-netapp-filesストレージクラスを使用し、Trident 24.06より前に作成されたストレージバックエンドに対して、スペース効率に優れたバックアップおよびリストア機能を有効にすることができます。この機能はNFSv4ボリュームで動作し、容量プールから追加のスペースを消費しません。
+
+.開始する前に
+以下を確認してください。
+
+* Trident Protectをインストールしました。
+* Trident Protectでアプリケーションを定義しました。この手順を完了するまで、このアプリケーションの保護機能は制限されます。
+*  `azure-netapp-files`がストレージ バックエンドのデフォルトのストレージ クラスとして選択されています。
+
+
+.設定手順を展開する
+[%collapsible]
+====
+. ANF ボリュームが Trident 24.10 へのアップグレード前に作成された場合は、Trident で以下の手順を実行してください：
++
+.. azure-netapp-files ベースでアプリケーションに関連付けられている各 PV のスナップショット ディレクトリを有効にします：
++
+[source, console]
+----
+tridentctl update volume <pv name> --snapshot-dir=true -n trident
+----
+.. 関連付けられている各 PV に対してスナップショット ディレクトリが有効になっていることを確認します：
++
+[source, console]
+----
+tridentctl get volume <pv name> -n trident -o yaml | grep snapshotDir
+----
++
+応答：
+
++
+[listing]
+----
+snapshotDirectory: "true"
+----
++
+スナップショット ディレクトリが有効になっていない場合、Trident Protect は通常のバックアップ機能を選択しますが、これにより、バックアップ プロセス中に容量プールのスペースが一時的に消費されます。この場合、バックアップされるボリュームのサイズの一時ボリュームを作成するために、容量プールに十分なスペースがあることを確認してください。
+
+
+
+
+
+.結果
+アプリケーションは、Trident Protectを使用したバックアップとリストアの準備ができています。各PVCは、バックアップとリストアのために他のアプリケーションでも使用できます。
+
+====

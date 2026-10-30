@@ -1,0 +1,59 @@
+---
+sidebar: sidebar 
+permalink: trident-managing-k8s/upgrade-operator-overview.html 
+keywords: upgrade, trident, operator, helm, controller, daemonset, node pods, rolling upgrade, zero downtime 
+summary: Tridentオペレーターを使用してTridentをアップグレードする前に、アップグレード中に発生するバックグラウンド プロセスを理解する必要があります。これには、Tridentコントローラー、コントローラーポッドとノードポッド、およびローリングアップデートを可能にするノードDaemonSetへの変更が含まれます。 
+---
+= Tridentオペレータのアップグレードワークフローを理解する
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentオペレーターを使用してTridentをアップグレードする前に、アップグレード中に発生するバックグラウンド プロセスを理解する必要があります。これには、Tridentコントローラー、コントローラーポッドとノードポッド、およびローリングアップデートを可能にするノードDaemonSetへの変更が含まれます。
+
+
+
+[[trident-operator-upgrade-handling]]
+== Tridentオペレータのアップグレード処理
+
+Trident のインストールとアップグレードの多くのlink:../trident-install/kubernetes-deploy.html["Tridentオペレーターを使用する利点"]の 1 つは、既存のマウントされたボリュームを中断することなく、Trident と Kubernetes オブジェクトを自動的に処理することです。このようにして、Trident はダウンタイムなしでアップグレードをサポートできます。またはlink:https://kubernetes.io/docs/tutorials/kubernetes-basics/update/update-intro/["_ローリング アップデート_"^]。特に、Trident オペレーターは Kubernetes クラスターと通信して以下を実行します：
+
+* Trident コントローラの導入とノード DaemonSet を削除して再作成します。
+* Trident Controller PodとTrident Node Podを新しいバージョンに置き換えます。
++
+** 1 つのノードが更新されない場合でも、残りのノードの更新は妨げられません。
+** 実行中の Trident Node Pod を持つノードのみがボリュームをマウントできます。
+
+
+
+
+
+TIP: Kubernetesクラスタ上のTridentアーキテクチャの詳細については、link:../trident-get-started/architecture.html["Tridentアーキテクチャ"^]を参照してください。
+
+
+
+[[operator-upgrade-workflow]]
+== オペレータのアップグレードワークフロー
+
+Trident オペレータを使用してアップグレードを開始すると：
+
+. *Trident オペレータ*：
++
+.. 現在インストールされている Trident のバージョン（バージョン _n_）を検出します。
+.. CRD、RBAC、Trident SVC を含むすべての Kubernetes オブジェクトを更新します。
+.. バージョン _n_ の Trident Controller デプロイメントを削除します。
+.. バージョン _n+1_ の Trident Controller デプロイメントを作成します。
+
+
+. *Kubernetes* は _n+1_ 用の Trident Controller Pod を作成します。
+. *Trident オペレータ*：
++
+.. _n_ の Trident ノード DaemonSet を削除します。オペレーターはノード Pod の終了を待機しません。
+.. _n+1_ の Trident Node Daemonset を作成します。
+
+
+. *Kubernetes* は、Trident Node Pod _n_ を実行していないノードに Trident Node Pod を作成します。これにより、ノード上に任意のバージョンの Trident Node Pod が複数存在しないことが保証されます。
+

@@ -1,0 +1,90 @@
+= リストアおよびフェイルオーバー処理中のネームスペースのアノテーションとラベル
+:allow-uri-read: 
+
+
+
+
+[[namespace-annotations-and-labels-during-restore-and-failover-operations]]
+== リストアおよびフェイルオーバー処理中のネームスペースのアノテーションとラベル
+
+復元およびフェイルオーバー処理中に、デスティネーションネームスペースのラベルとアノテーションは、ソースネームスペースのラベルとアノテーションと一致するように作成されます。デスティネーションネームスペースに存在しないソースネームスペースのラベルまたはアノテーションが追加され、既存のラベルまたはアノテーションはソースネームスペースの値と一致するように上書きされます。デスティネーションネームスペースにのみ存在するラベルまたはアノテーションは変更されません。
+
+
+NOTE: Red Hat OpenShiftを使用する場合は、OpenShift環境における名前空間アノテーションの重要な役割に注意することが重要です。名前空間アノテーションにより、リストアされたポッドがOpenShiftセキュリティコンテキスト制約（SCC）で定義された適切な権限とセキュリティ設定に準拠し、権限の問題なくボリュームにアクセスできるようになります。詳細については、link:https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/authentication_and_authorization/managing-pod-security-policies["OpenShiftセキュリティコンテキスト制約ドキュメント"^]を参照してください。
+
+リストアまたはフェイルオーバー処理を実行する前にKubernetes環境変数 `RESTORE_SKIP_NAMESPACE_ANNOTATIONS`を設定することで、デスティネーションネームスペース内の特定のアノテーションが上書きされるのを防ぐことができます。次に例を示します。
+
+[source, console]
+----
+helm upgrade trident-protect -n trident-protect netapp-trident-protect/trident-protect \
+  --set-string restoreSkipNamespaceAnnotations="{<annotation_key_to_skip_1>,<annotation_key_to_skip_2>}" \
+  --reuse-values
+----
+
+NOTE: リストアまたはフェイルオーバー操作を実行すると、 `restoreSkipNamespaceAnnotations`および `restoreSkipNamespaceLabels`で指定された名前空間アノテーションとラベルは、リストアまたはフェイルオーバー操作から除外されます。これらの設定は、Helmの初回インストール時に必ず構成してください。詳細については、link:../trident-protect/trident-protect-customize-installation.html#configure-additional-trident-protect-helm-chart-settings["追加のTrident Protectヘルムチャート設定を構成する"]を参照してください。
+
+Helm を使用して `--create-namespace`フラグを指定してソースアプリケーションをインストールした場合、 `name`ラベルキーには特別な処理が適用されます。リストアまたはフェイルオーバープロセス中に、 Trident Protect はこのラベルをデスティネーションネームスペースにコピーしますが、ソースからの値がソースネームスペースと一致する場合は、値をデスティネーションネームスペースの値に更新します。この値がソースネームスペースと一致しない場合は、変更されずにデスティネーションネームスペースにコピーされます。
+
+
+
+[[example]]
+=== 例
+
+次の例は、それぞれ異なる注釈とラベルを持つソース名前空間と宛先名前空間を示しています。操作の前後の宛先名前空間の状態や、宛先名前空間で注釈とラベルがどのように結合または上書きされるかを確認できます。
+
+
+
+==== リストアまたはフェイルオーバー処理の前に
+
+次の表は、リストアまたはフェイルオーバー処理前のサンプルのソースネームスペースとデスティネーションネームスペースの状態を示しています：
+
+[cols="1,2a,2a"]
+|===
+| ネームスペース | アノテーション | ラベル 
+
+
+| ネームスペースns-1（ソース）  a| 
+* annotation.one/key："updatedvalue"
+* annotation.two/key："true"
+
+ a| 
+* environment=production
+* コンプライアンス＝hipaa
+* name=ns-1
+
+
+
+
+| ネームスペースns-2（宛先）  a| 
+* annotation.one/key："true"
+* annotation.three/key："false"
+
+ a| 
+* ロール＝database
+
+
+|===
+
+
+==== リストア処理後
+
+次の表は、復元またはフェイルオーバー操作後の宛先名前空間の例の状態を示しています。いくつかのキーが追加され、いくつかは上書きされ、 `name`ラベルは宛先名前空間と一致するように更新されました：
+
+[cols="1,2a,2a"]
+|===
+| ネームスペース | アノテーション | ラベル 
+
+
+| ネームスペースns-2（宛先）  a| 
+* annotation.one/key："updatedvalue"
+* annotation.two/key："true"
+* annotation.three/key："false"
+
+ a| 
+* name=ns-2
+* コンプライアンス＝hipaa
+* environment=production
+* ロール＝database
+
+
+|===

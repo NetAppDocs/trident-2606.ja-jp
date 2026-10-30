@@ -1,0 +1,53 @@
+---
+sidebar: sidebar 
+permalink: legal-notices.html 
+keywords: copyrights, notice, trademarks, patents, privacy, open source 
+summary: 法的通知から、著作権情報、商標、特許などを確認できます。 
+---
+= 法律上の表示
+:allow-uri-read: 
+:icons: font
+:imagesdir: ./media/
+
+
+[role="lead"]
+法的通知から、著作権情報、商標、特許などを確認できます。
+
+
+
+[[copyright]]
+== 著作権
+
+link:https://www.netapp.com/company/legal/copyright/["https://www.netapp.com/company/legal/copyright/"^]
+
+
+
+[[trademarks]]
+== 商標
+
+NetApp、NetAppのロゴ、NetAppの商標一覧のページに掲載されているマークは、NetApp, Inc.の商標です。その他の会社名と製品名は、それを所有する各社の商標である場合があります。
+
+link:https://www.netapp.com/company/legal/trademarks/["https://www.netapp.com/company/legal/trademarks/"^]
+
+
+
+[[patents]]
+== 特許
+
+現在NetAppが所有する特許の一覧は以下のページから閲覧できます。
+
+link:https://www.netapp.com/pdf.html?item=/media/11887-patentspage.pdf["https://www.netapp.com/pdf.html?item=/media/11887-patentspage.pdf"^]
+
+
+
+[[privacy-policy]]
+== プライバシー ポリシー
+
+link:https://www.netapp.com/company/legal/privacy-policy/["https://www.netapp.com/company/legal/privacy-policy/"^]
+
+
+
+[[open-source]]
+== オープンソース
+
+NetAppソフトウェアのTridentで使用されているサードパーティの著作権とライセンスは、各リリースの通知ファイル（ https://github.com/NetApp/trident/[]）で確認できます。

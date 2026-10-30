@@ -1,0 +1,243 @@
+---
+sidebar: sidebar 
+permalink: trident-use/monitor-trident.html 
+keywords: telemetry, Trident, monitor, metrics, health, volume usage, autosupport 
+summary: Tridentは、Tridentのパフォーマンスを監視するために使用できるPrometheusメトリクスエンドポイントのセットを提供します。 
+---
+= Tridentストレージ操作の監視
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Tridentは、Tridentのパフォーマンスを監視するために使用できるPrometheusメトリクスエンドポイントのセットを提供します。
+
+
+
+[[overview]]
+== 概要
+
+Trident が提供する指標により、次のことが可能になります。
+
+* Tridentの健全性と構成を監視します。処理がどの程度成功したか、期待どおりにバックエンドと通信できるかどうかを調べることができます。
+* バックエンドの使用状況情報を調べて、バックエンドにプロビジョニングされているボリュームの数や消費されているスペースの量などを把握します。
+* 利用可能なバックエンドにプロビジョニングされたボリュームの量のマッピングを維持します。
+* パフォーマンスを追跡します。Trident がバックエンドと通信して処理を実行するのにどれくらい時間がかかるかを確認できます。
+
+
+
+NOTE: デフォルトでは、TridentのメトリックはターゲットポートでHTTPSを介して公開されます `8001`の `/metrics`エンドポイントで公開されます。これらのメトリックは、Tridentのインストール時に*デフォルトで有効*になります。ポート `8444`でHTTPS経由でTridentメトリックを使用するように設定することもできます。
+
+.要件
+* TridentがインストールされたKubernetesクラスタ。
+* Prometheus インスタンス。これは https://github.com/prometheus-operator/prometheus-operator["コンテナ化されたPrometheusの導入"^]にすることも、Prometheus を https://prometheus.io/download/["ネイティブアプリケーション"^]として実行することもできます。
+
+
+
+
+[[step-1-define-a-prometheus-target]]
+== ステップ1：Prometheusターゲットを定義する
+
+メトリックを収集し、Tridentが管理するバックエンド、作成するボリュームなどに関する情報を取得するには、Prometheusターゲットを定義する必要があります。link:https://prometheus-operator.dev/docs/developer/getting-started/["Prometheus Operator ドキュメント"^]を参照してください。
+
+
+
+[[step-2-create-a-prometheus-servicemonitor]]
+== ステップ2：Prometheus ServiceMonitorを作成する
+
+Tridentメトリクスを使用するには、 `trident-csi`サービスを監視し、 `metrics`ポートでリッスンするPrometheus ServiceMonitorを作成する必要があります。サンプルServiceMonitorは次のようになります：
+
+[source, yaml]
+----
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: trident-sm
+  namespace: monitoring
+  labels:
+    release: prom-operator
+spec:
+  jobLabel: trident
+  selector:
+    matchLabels:
+      app: controller.csi.trident.netapp.io
+  namespaceSelector:
+    matchNames:
+      - trident
+  endpoints:
+    - port: metrics
+      interval: 15s
+----
+このServiceMonitor定義は、 `trident-csi`サービスによって返されるメトリックを取得し、特にサービスの `metrics`エンドポイントを検索します。その結果、PrometheusはTridentのメトリックを理解できるように設定されました。
+
+Trident から直接利用可能なメトリックに加えて、kubelet は独自のメトリック エンドポイントを介して多くの `kubelet_volume_*`メトリックを公開します。Kubelet は、接続されているボリューム、およびそれが処理するポッドやその他の内部操作に関する情報を提供できます。 https://kubernetes.io/docs/concepts/cluster-administration/monitoring/["ここをクリックしてください。"^]を参照してください。
+
+
+
+[[consume-trident-metrics-over-https]]
+=== HTTPS経由でTridentメトリクスを使用する
+
+HTTPS（ポート8444）経由でTridentメトリクスを利用するには、ServiceMonitor定義を修正してTLS構成を含める必要があります。また、 `trident-csi`シークレットを `trident`ネームスペースからPrometheusが実行されているネームスペースにコピーする必要があります。これには次のコマンドを使用できます：
+
+`kubectl get secret trident-csi -n trident -o yaml | sed 's/namespace: trident/namespace: monitoring/' | kubectl apply -f -`
+
+HTTPS メトリックのサンプルServiceMonitorは次のようになります：
+
+[source, yaml]
+----
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: trident-sm
+  namespace: monitoring
+  labels:
+    release: prom-operator
+spec:
+  jobLabel: trident
+  selector:
+    matchLabels:
+      app: controller.csi.trident.netapp.io
+  namespaceSelector:
+    matchNames:
+      - trident
+  endpoints:
+    - interval: 15s
+      path: /metrics
+      port: https-metrics
+      scheme: https
+      tlsConfig:
+        ca:
+          secret:
+            key: caCert
+            name: trident-csi
+        cert:
+          secret:
+            key: clientCert
+            name: trident-csi
+        keySecret:
+          key: clientKey
+          name: trident-csi
+        serverName: trident-csi
+----
+Tridentは、すべてのインストール方法（tridentctl、Helm chart、Operator）でHTTPSメトリクスをサポートします。
+
+*  `tridentctl install`コマンドを使用している場合は、 `--https-metrics`フラグを渡してHTTPSメトリックを有効にすることができます。
+* Helmチャートを使用している場合は、 `httpsMetrics`パラメータを設定してHTTPSメトリックを有効にできます。
+* YAMLファイルを使用している場合、 `--https_metrics`フラグを `trident-main`コンテナに `trident-deployment.yaml`ファイルで追加できます。
+
+
+
+
+[[step-3-query-trident-metrics-with-promql]]
+== ステップ3：PromQLを使用したTridentメトリクスのクエリ
+
+PromQL は、時系列データまたは表形式のデータを返す式を作成するのに適しています。
+
+使用できる PromQL クエリをいくつか示します：
+
+
+
+[[get-trident-health-information]]
+=== Tridentの健康情報を取得する
+
+* **Tridentからの HTTP 2XX レスポンスの割合**
+
+
+[listing]
+----
+(sum (trident_rest_ops_seconds_total_count{status_code=~"2.."} OR on() vector(0)) / sum (trident_rest_ops_seconds_total_count)) * 100
+----
+* **ステータスコード別のTridentからのREST応答の割合**
+
+
+[listing]
+----
+(sum (trident_rest_ops_seconds_total_count) by (status_code)  / scalar (sum (trident_rest_ops_seconds_total_count))) * 100
+----
+* **Tridentによって実行された操作の平均所要時間（ミリ秒）**
+
+
+[listing]
+----
+sum by (operation) (trident_operation_duration_milliseconds_sum{success="true"}) / sum by (operation) (trident_operation_duration_milliseconds_count{success="true"})
+----
+
+
+[[get-trident-usage-information]]
+=== Trident使用情報を取得する
+
+* **平均ボリュームサイズ**
+
+
+[listing]
+----
+trident_volume_allocated_bytes/trident_volume_count
+----
+* **各バックエンドによってプロビジョニングされたボリュームスペースの合計**
+
+
+[listing]
+----
+sum (trident_volume_allocated_bytes) by (backend_uuid)
+----
+
+
+[[get-individual-volume-usage]]
+=== 個々のボリューム使用量を取得する
+
+
+NOTE: これは、kubelet メトリックも収集される場合にのみ有効になります。
+
+* **各ボリュームの使用済みスペースの割合**
+
+
+[listing]
+----
+kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes * 100
+----
+
+
+[[learn-about-trident-autosupport-telemetry]]
+== Trident AutoSupportテレメトリーの詳細
+
+デフォルトでは、Tridentは、Prometheusメトリクスと基本的なバックエンド情報をNetAppに毎日送信します。
+
+* TridentがNetAppにPrometheusメトリクスと基本的なバックエンド情報を送信しないようにするには、Tridentのインストール時に `--silence-autosupport`フラグを渡します。
+* Tridentは、 `tridentctl send autosupport`を介して、コンテナログをオンデマンドでNetAppサポートに送信することもできます。Tridentがログをアップロードするようにトリガーする必要があります。ログを送信する前に、NetAppのhttps://www.netapp.com/company/legal/privacy-policy/["プライバシー ポリシー"^]に同意する必要があります。
+* 特に指定がない限り、Trident は過去 24 時間のログを取得します。
+* ログの保存期間を指定するには、 `--since`フラグを使用します。例： `tridentctl send autosupport --since=1h`この情報は、Tridentと一緒にインストールされる `trident-autosupport`コンテナを介して収集および送信されます。コンテナイメージは https://hub.docker.com/r/netapp/trident-autosupport["Trident AutoSupport"^]から入手できます。
+* Trident AutoSupportは、個人を特定できる情報（PII）または個人情報を収集または送信しません。付属の https://www.netapp.com/pdf.html?item=/media/14114-enduserlicenseagreementworldwide.pdf["EULA"^]は、Tridentコンテナイメージ自体には適用されません。NetAppのデータセキュリティと信頼への取り組みの詳細については、 https://www.netapp.com/pdf.html?item=/media/14114-enduserlicenseagreementworldwide.pdf["ここをクリックしてください。"^]を参照してください。
+
+
+Trident から送信されるペイロードの例は次のようになります：
+
+[source, yaml]
+----
+---
+items:
+  - backendUUID: ff3852e1-18a5-4df4-b2d3-f59f829627ed
+    protocol: file
+    config:
+      version: 1
+      storageDriverName: ontap-nas
+      debug: false
+      debugTraceFlags: null
+      disableDelete: false
+      serialNumbers:
+        - nwkvzfanek_SN
+      limitVolumeSize: ""
+    state: online
+    online: true
+----
+* AutoSupportメッセージはNetAppのAutoSupportエンドポイントに送信されます。コンテナイメージを保存するためにプライベートレジストリを使用している場合は、 `--image-registry`フラグを使用できます。
+* インストール用のYAMLファイルを生成して、プロキシURLを設定することもできます。これは、 `tridentctl install --generate-custom-yaml`を使用してYAMLファイルを作成し、 `--proxy-url`引数を `trident-autosupport`コンテナの `trident-deployment.yaml`に追加することで実行できます。
+
+
+
+
+[[disable-trident-metrics]]
+== Tridentメトリクスを無効にする
+
+メトリクスの報告を**無効化**するには、カスタムYAMLを生成し（ `--generate-custom-yaml` フラグを使用）、それらを編集して `--metrics` フラグが `trident-main` コンテナで呼び出されないように削除してください。

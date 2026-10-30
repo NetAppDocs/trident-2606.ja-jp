@@ -1,0 +1,103 @@
+---
+sidebar: sidebar 
+permalink: trident-docker/upgrade-uninstall-docker.html 
+keywords: uninstall, Trident, trident for docker, docker, upgrade trident for docker 
+summary: '使用中のボリュームに影響を与えることなく、Docker 用 Trident を安全にアップグレードできます。アップグレードプロセス中、プラグインに対する `docker volume`コマンドが成功しない短い期間があり、プラグインが再び実行されるまでアプリケーションはボリュームをマウントできません。ほとんどの場合、これは数秒の問題です。' 
+---
+= Tridentのアップグレードまたはアンインストール
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+使用中のボリュームに影響を与えることなく、Docker 用 Trident を安全にアップグレードできます。アップグレードプロセス中、プラグインに対する `docker volume`コマンドが成功しない短い期間があり、プラグインが再び実行されるまでアプリケーションはボリュームをマウントできません。ほとんどの場合、これは数秒の問題です。
+
+
+
+[[upgrade]]
+== Upgrade
+
+Docker用のTridentをアップグレードするには、以下の手順を実行してください。
+
+.手順
+. 既存のボリュームを一覧表示します：
++
+[listing]
+----
+docker volume ls
+DRIVER              VOLUME NAME
+netapp:latest       my_volume
+----
+. プラグインを無効にします：
++
+[listing]
+----
+docker plugin disable -f netapp:latest
+docker plugin ls
+ID                  NAME                DESCRIPTION                          ENABLED
+7067f39a5df5        netapp:latest       nDVP - NetApp Docker Volume Plugin   false
+----
+. プラグインをアップグレードします：
++
+[listing]
+----
+docker plugin upgrade --skip-remote-check --grant-all-permissions netapp:latest netapp/trident-plugin:21.07
+----
++
+
+NOTE: Trident の 18.01 リリースは nDVP を置き換えます。 `netapp/ndvp-plugin`イメージから `netapp/trident-plugin`イメージに直接アップグレードする必要があります。
+
+. プラグインを有効にします：
++
+[listing]
+----
+docker plugin enable netapp:latest
+----
+. プラグインが有効になっていることを確認します：
++
+[listing]
+----
+docker plugin ls
+ID                  NAME                DESCRIPTION                             ENABLED
+7067f39a5df5        netapp:latest       Trident - NetApp Docker Volume Plugin   true
+----
+. ボリュームが表示されていることを確認します：
++
+[listing]
+----
+docker volume ls
+DRIVER              VOLUME NAME
+netapp:latest       my_volume
+----
+
+
+
+IMPORTANT: 古いバージョンのTrident（20.10以前）からTrident 20.10以降にアップグレードする場合、エラーが発生する可能性があります。詳細については、link:known-issues-docker.html["既知の問題"^]を参照してください。エラーが発生した場合は、まずプラグインを無効にし、次にプラグインを削除してから、追加の設定パラメータを渡して必要なTridentバージョンをインストールしてください： `docker plugin install netapp/trident-plugin:20.10 --alias netapp --grant-all-permissions config=config.json`
+
+
+
+[[uninstall]]
+== アンインストール
+
+Docker用のTridentをアンインストールするには、以下の手順を実行してください。
+
+.手順
+. プラグインによって作成されたボリュームをすべて削除します。
+. プラグインを無効にします：
++
+[listing]
+----
+docker plugin disable netapp:latest
+docker plugin ls
+ID                  NAME                DESCRIPTION                          ENABLED
+7067f39a5df5        netapp:latest       nDVP - NetApp Docker Volume Plugin   false
+----
+. プラグインを削除します：
++
+[listing]
+----
+docker plugin rm netapp:latest
+----
+

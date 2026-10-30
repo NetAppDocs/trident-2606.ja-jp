@@ -1,0 +1,126 @@
+---
+sidebar: sidebar 
+permalink: trident-use/anf-prep.html 
+keywords: trident backend, azure netapp files, smb volumes, smb, windows, active directory, csi proxy, aks, managed identities 
+summary: Azure NetApp Files バックエンドを設定する前に、次の要件が満たされていることを確認する必要があります。 
+---
+= Azure NetApp Files バックエンドを設定するための準備
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Azure NetApp Files バックエンドを設定する前に、次の要件が満たされていることを確認する必要があります。
+
+
+
+[[supported-azure-cloud-environments]]
+== サポートされているAzureクラウド環境
+
+Tridentは、複数のAzureクラウド環境でAzure NetApp Filesバックエンドをサポートしています。
+
+サポートされている Azure クラウドは以下のとおりです：
+
+* Azure Commercial
+* Azure Government（Azure Government / MAG）
+* Azure China
+
+
+環境を準備する際は、Azure サブスクリプション、ID 構成、および Azure NetApp Files リソースが適切な Azure クラウド環境に作成されていることを確認してください。
+
+
+
+[[prerequisites-for-nfs-and-smb-volumes]]
+== NFSおよびSMBボリュームの前提条件
+
+Azure NetApp Files を初めて使用する場合、または新しい場所で使用する場合は、Azure NetApp Files をセットアップして NFS ボリュームを作成するための初期設定が必要です。 https://docs.microsoft.com/en-us/azure/azure-netapp-files/azure-netapp-files-quickstart-set-up-account-create-volumes["Azure：Azure NetApp Files のセットアップと NFS ボリュームの作成"^]を参照してください。
+
+ https://azure.microsoft.com/en-us/products/netapp/["Azure NetApp Files"^]バックエンドを設定して使用するには、次のものが必要です：
+
+[NOTE]
+====
+* `subscriptionID`、 `tenantID`、 `clientID`、 `location`、および `clientSecret`は、AKS クラスターでマネージド ID を使用する場合はオプションです。
+* `tenantID`、 `clientID`、および `clientSecret`は、AKSクラスターでクラウドIDを使用する場合はオプションです。
+* Azure NetApp Files を非商用 Azure クラウドにデプロイするには、クラウド固有の Azure Resource Manager と認証エンドポイントが必要です。Trident およびすべてのバックエンド構成で、Azure クラウド環境に適したエンドポイントを使用していることを確認してください。
+
+
+====
+* 容量プール。link:https://learn.microsoft.com/en-us/azure/azure-netapp-files/azure-netapp-files-set-up-capacity-pool["Microsoft：Azure NetApp Files の容量プールを作成する"^]を参照してください。
+* Azure NetApp Files に委任されたサブネット。link:https://learn.microsoft.com/en-us/azure/azure-netapp-files/azure-netapp-files-delegate-subnet["Microsoft：サブネットを Azure NetApp Files に委任する"^]を参照してください。
+* `subscriptionID`Azure NetApp Files が有効になっている Azure サブスクリプションから。
+* `tenantID`、 `clientID`、および `clientSecret`は、十分な権限を持つAzure Active Directoryのlink:https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal["アプリ登録"^]から、Azure NetApp Filesサービスに対して使用されます。アプリ登録は次のいずれかを使用する必要があります：
++
+** 所有者または貢献者の役割link:https://docs.microsoft.com/en-us/azure/role-based-access-control/built-in-roles["Azure によって事前定義済み"^]。
+** link:https://learn.microsoft.com/en-us/azure/role-based-access-control/custom-roles-portal["カスタム Contributor ロール"]サブスクリプションレベルで(`assignableScopes`）Tridentが必要とするものだけに制限された以下の権限を持ちます。カスタムロールを作成したら、link:https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal["Azure ポータルを使用してロールを割り当てる"^]。
++
+.カスタム貢献者ロール
+[%collapsible]
+====
+[source, JSON]
+----
+{
+  "id": "/subscriptions/<subscription-id>/providers/Microsoft.Authorization/roleDefinitions/<role-definition-id>",
+  "properties": {
+    "roleName": "custom-role-with-limited-perms",
+    "description": "custom role providing limited permissions",
+    "assignableScopes": [
+      "/subscriptions/<subscription-id>"
+    ],
+    "permissions": [
+      {
+        "actions": [
+          "Microsoft.NetApp/netAppAccounts/capacityPools/read",
+          "Microsoft.NetApp/netAppAccounts/capacityPools/write",
+          "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/read",
+          "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/write",
+          "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/delete",
+          "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/snapshots/read",
+          "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/snapshots/write",
+          "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/snapshots/delete",
+          "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/MountTargets/read",
+          "Microsoft.Network/virtualNetworks/read",
+          "Microsoft.Network/virtualNetworks/subnets/read",
+          "Microsoft.Features/featureProviders/subscriptionFeatureRegistrations/read",
+          "Microsoft.Features/featureProviders/subscriptionFeatureRegistrations/write",
+          "Microsoft.Features/featureProviders/subscriptionFeatureRegistrations/delete",
+          "Microsoft.Features/features/read",
+          "Microsoft.Features/operations/read",
+          "Microsoft.Features/providers/features/read",
+          "Microsoft.Features/providers/features/register/action",
+          "Microsoft.Features/providers/features/unregister/action",
+          "Microsoft.Features/subscriptionFeatureRegistrations/read"
+        ],
+        "notActions": [],
+        "dataActions": [],
+        "notDataActions": []
+      }
+    ]
+  }
+}
+----
+====
+
+
+* Azure `location`少なくとも1つを含む https://docs.microsoft.com/en-us/azure/azure-netapp-files/azure-netapp-files-delegate-subnet["委任されたサブネット"^]。Trident 22.01の時点で、 `location`パラメータは、バックエンド構成ファイルの最上位レベルの必須フィールドです。仮想プールで指定された場所の値は無視されます。
+*  `Cloud Identity`を使用するには、 `client ID`を https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities["ユーザー割り当てマネージド ID"^]から取得し、そのIDを `azure.workload.identity/client-id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx`で指定します。
+
+
+
+
+[[additional-requirements-for-smb-volumes]]
+== SMB ボリュームの追加要件
+
+SMB ボリュームを作成するには、次のものが必要です：
+
+* Active Directory が構成され、Azure NetApp Files に接続されている。link:https://learn.microsoft.com/en-us/azure/azure-netapp-files/create-active-directory-connections["Microsoft：Azure NetApp Files の Active Directory 接続の作成と管理"^]を参照してください。
+* Linux コントローラー ノードと、Windows Server 2022 を実行する少なくとも 1 つの Windows ワーカー ノードを備えた Kubernetes クラスター。Trident は、 Windows ノード上で実行されているポッドにマウントされた SMB ボリュームのみをサポートします。
+* Azure NetApp Files が Active Directory に対して認証できるように、Active Directory の資格情報を含む Trident シークレットが少なくとも 1 つ必要です。シークレットを生成するには `smbcreds`：
++
+[listing]
+----
+kubectl create secret generic smbcreds --from-literal username=user --from-literal password='password'
+----
+* Windows サービスとして構成された CSI プロキシ。 `csi-proxy`を設定するには、Windows 上で実行されている Kubernetes ノード用のlink:https://github.com/kubernetes-csi/csi-proxy["GitHub：CSI Proxy"^]またはlink:https://github.com/Azure/aks-engine/blob/master/docs/topics/csi-proxy-windows.md["GitHub：Windows用CSIプロキシ"^]を参照してください。
+

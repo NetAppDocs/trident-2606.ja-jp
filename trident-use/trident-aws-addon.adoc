@@ -1,0 +1,93 @@
+---
+sidebar: sidebar 
+permalink: trident-use/trident-aws-addon.html 
+keywords: Trident add-on, Trident EKS add-on, Trident AWS EKS add-on, integrate Trident, Trident 
+summary: Trident EKS アドオンを Kubernetes クラスターに追加します。 
+---
+= EKS クラスター上の Trident EKS アドオンを設定する
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+NetApp Tridentは、Amazon FSx for NetApp ONTAPのKubernetesストレージ管理を合理化し、開発者と管理者がアプリケーションの導入に集中できるようにします。NetApp Trident EKSアドオンには、最新のセキュリティパッチとバグ修正が含まれており、Amazon EKSで動作することがAWSによって検証されています。EKS アドオンを使用すると、Amazon EKS クラスターの安全性と安定性を常に確保し、アドオンのインストール、設定、更新に必要な作業量を削減できます。
+
+
+
+[[prerequisites]]
+== 前提条件
+
+AWS EKS の Trident アドオンを設定する前に、以下のものを用意してください：
+
+* アドオンを操作する権限を持つ Amazon EKS クラスターアカウント。link:https://docs.aws.amazon.com/eks/latest/userguide/eks-add-ons.html["Amazon EKS アドオン"^]を参照してください。
+* AWS マーケットプレイスへの AWS 権限：
+`"aws-marketplace:ViewSubscriptions",
+"aws-marketplace:Subscribe",
+"aws-marketplace:Unsubscribe`
+* AMI タイプ：Amazon Linux 2（AL2_x86_64）または Amazon Linux 2 Arm（AL2_ARM_64）
+* ノードタイプ：AMDまたはARM
+* 既存の Amazon FSx for NetApp ONTAP ファイルシステム
+
+
+
+
+[[steps]]
+== 手順
+
+. EKS ポッドが AWS リソースにアクセスできるようにするには、IAM ロールと AWS シークレットを作成してください。手順については、link:../trident-use/trident-fsx-iam-role.html["IAMロールとAWSシークレットを作成する"^]を参照してください。
+. EKS Kubernetes クラスターで、 * アドオン * タブに移動します。
++
+image::../media/aws-eks-01.png[EKS クラスタの Add-ons タブ]
+
+. *AWS Marketplace アドオン* に移動し、_storage_ カテゴリを選択します。
++
+image::../media/aws-eks-02.png[AWS Marketplace アドオンストレージカテゴリ]
+
+. *NetApp Trident* を見つけて、Trident アドオンのチェックボックスをオンにし、*次へ* をクリックします。
+. アドオンの目的のバージョンを選択します。
++
+image::../media/aws-eks-03.png[Tridentアドオンバージョンの選択]
+
+. 必要なアドオン設定を構成します。
++
+image::../media/aws-eks-04.png[Tridentアドオン設定]
+
+. IRSA（サービスアカウントのIAMロール）を使用している場合は、追加の構成手順を参照してくださいlink:https://docs.netapp.com/us-en/trident/trident-use/trident-fsx-install-trident.html#enable-the-trident-add-on-for-aws["ここをクリックしてください。"]。
+. *作成*を選択します。
+. アドオンのステータスが _Active_ であることを確認します。
++
+image::../media/aws-eks-05.png[Tridentアドオンのアクティブステータス]
+
+. 次のコマンドを実行して、Trident がクラスタに正しくインストールされていることを確認します：
++
+[listing]
+----
+kubectl get pods -n trident
+----
+. セットアップを続行し、ストレージ バックエンドを構成します。詳細については、link:trident-fsx-storage-backend.html["ストレージバックエンドを設定する"]を参照してください。
+
+
+
+
+[[installuninstall-the-trident-eks-add-on-using-cli]]
+== CLI を使用した Trident EKS アドオンのインストール / アンインストール
+
+.CLI を使用して NetApp Trident EKS アドオンをインストールします：
+次のコマンド例では、Trident EKS アドオンをインストールします：
+`eksctl create addon --cluster clusterName --name netapp_trident-operator --version v25.6.0-eksbuild.1`（専用バージョンを使用）
+
+以下のコマンド例は Trident EKS アドオンバージョン 25.6.1 をインストールします：
+`eksctl create addon --cluster clusterName --name netapp_trident-operator --version v25.6.1-eksbuild.1`（専用バージョンを使用）
+
+以下のコマンド例は Trident EKS アドオンバージョン 25.6.2 をインストールします：
+`eksctl create addon --cluster clusterName --name netapp_trident-operator --version v25.6.2-eksbuild.1`（専用バージョンを使用）
+
+.CLI を使用して NetApp Trident EKS アドオンをアンインストールします：
+次のコマンドは、Trident EKS アドオンをアンインストールします：
+
+[listing]
+----
+eksctl delete addon --cluster K8s-arm --name netapp_trident-operator
+----

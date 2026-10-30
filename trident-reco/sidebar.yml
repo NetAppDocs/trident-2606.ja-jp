@@ -1,0 +1,22 @@
+---
+section: trident-reco
+title: ベストプラクティスと推奨事項
+entries:
+- title: 導入
+  url: "/trident-reco/deploy-reco.html"
+- title: ストレージ構成
+  url: "/trident-reco/storage-config-best-practices.html"
+- title: Trident統合
+  url: "/trident-reco/integrate-trident.html"
+- title: データ保護とディザスタ リカバリ
+  url: "/trident-reco/backup.html"
+- title: Tridentを使用したステートフルアプリケーションのフェイルオーバーの自動化
+  url: "/trident-reco/force-detach.html"
+- title: セキュリティ
+  entries:
+  - title: セキュリティに関する推奨事項
+    url: "/trident-reco/security-reco.html"
+  - title: Linux Unified Key Setup（LUKS）
+    url: "/trident-reco/security-luks.html"
+  - title: Kerberos のインフライト暗号化
+    url: "/trident-reco/kerberos-inflight-encryption.html"

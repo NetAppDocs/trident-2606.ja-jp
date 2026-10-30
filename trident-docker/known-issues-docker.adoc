@@ -1,0 +1,68 @@
+---
+sidebar: sidebar 
+permalink: trident-docker/known-issues-docker.html 
+keywords: known issues, trident, trident for docker, docker 
+summary: Docker で Trident を使用する際の既知の問題に関する情報を確認してください。 
+---
+= 既知の問題と制限事項
+:hardbreaks:
+:allow-uri-read: 
+:icons: font
+:imagesdir: ../media/
+
+
+[role="lead"]
+Docker で Trident を使用する際の既知の問題と制限に関する情報を確認してください。
+
+
+
+[[upgrading-trident-docker-volume-plugin-to-20-10-and-later-from-older-versions-results-in-upgrade-failure-with-the-no-such-file-or-directory-error]]
+== Trident Docker Volume Plugin を古いバージョンから 20.10 以降にアップグレードすると、「そのようなファイルまたはディレクトリはありません」というエラーが発生し、アップグレードが失敗します。
+
+.回避策
+. プラグインを無効にします。
++
+[source, console]
+----
+docker plugin disable -f netapp:latest
+----
+. プラグインを削除します。
++
+[source, console]
+----
+docker plugin rm -f netapp:latest
+----
+. 追加の `config`パラメータを指定してプラグインを再インストールします。
++
+[source, console]
+----
+docker plugin install netapp/trident-plugin:20.10 --alias netapp --grant-all-permissions config=config.json
+----
+
+
+
+
+[[volume-names-must-be-a-minimum-of-2-characters-in-length]]
+== ボリューム名は 2 文字以上である必要があります。
+
+
+NOTE: これは Docker クライアントの制限です。クライアントは、1 文字の名前を Windows パスとして解釈します https://github.com/moby/moby/issues/25773["バグ25773を参照"^]。
+
+
+
+[[docker-swarm-has-certain-behaviors-that-prevent-trident-from-supporting-it-with-every-storage-and-driver-combination]]
+== Docker Swarmには、Tridentがあらゆるストレージとドライバの組み合わせでサポートすることを妨げる特定の動作があります。
+
+* Docker Swarm は現在、一意のボリューム識別子としてボリューム ID ではなくボリューム名を使用しています。
+* ボリュームリクエストは、Swarmクラスター内の各ノードに同時に送信されます。
+* ボリュームプラグイン（Trident を含む）は、Swarm クラスタ内の各ノードで独立して実行する必要があります。ONTAP の仕組みと `ontap-nas`および `ontap-san`ドライバの機能により、これらの制限内で動作できるのはこれらのドライバだけです。
+
+
+残りのドライバーは、競合状態などの問題の影響を受けやすく、その結果、明確な「勝者」なしに単一のリクエストに対して大量のボリュームが作成されることがあります。たとえば、Elementには、ボリュームに同じ名前を付けてIDを異ならせることができる機能があります。
+
+NetAppはDockerチームにフィードバックを提供しましたが、今後の対応については何も示されていません。
+
+
+
+[[if-a-flexgroup-is-being-provisioned-ontap-does-not-provision-a-second-flexgroup-if-the-second-flexgroup-has-one-or-more-aggregates-in-common-with-the-flexgroup-being-provisioned]]
+== FlexGroupがプロビジョニングされている場合、2番目のFlexGroupがプロビジョニングされているFlexGroupと1つ以上のアグリゲートを共有している場合、ONTAPは2番目のFlexGroupをプロビジョニングしません。

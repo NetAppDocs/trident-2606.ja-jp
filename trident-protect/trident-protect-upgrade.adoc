@@ -1,0 +1,93 @@
+---
+sidebar: sidebar 
+permalink: trident-protect/trident-protect-upgrade.html 
+keywords: trident, protect, netapp, upgrade, new, version 
+summary: 新しい機能やバグ修正を活用するには、Trident Protectを最新バージョンにアップグレードできます。 
+---
+= Trident Protectのアップグレード
+:hardbreaks:
+:allow-uri-read: 
+:nofooter: 
+:icons: font
+:linkattrs: 
+:imagesdir: ../media/
+
+
+[role="lead"]
+新しい機能やバグ修正を活用するには、Trident Protectを最新バージョンにアップグレードできます。
+
+[NOTE]
+====
+* バージョン24.10からアップグレードすると、アップグレード中に実行されるスナップショットが失敗する可能性があります。この障害により、手動またはスケジュールされた将来のスナップショットの作成が妨げられることはありません。アップグレード中にスナップショットが失敗した場合は、アプリケーションが保護されるように手動で新しいスナップショットを作成できます。
++
+潜在的な障害を回避するために、アップグレード前にすべてのスナップショット スケジュールを無効にして、アップグレード後に再度有効にすることができます。ただし、これにより、アップグレード期間中にスケジュールされたスナップショットが失われることになります。
+
+* プライベート レジストリのインストールでは、ターゲット バージョンに必要な Helm チャートとイメージがプライベート レジストリで使用できることを確認し、カスタム Helm 値が新しいチャート バージョンと互換性があることを確認します。詳細については、link:trident-protect-installation.html["プライベートレジストリからTrident Protectをインストールする"]を参照してください。
+
+
+====
+
+
+[[step-1-select-a-version]]
+== ステップ1：バージョンを選択する
+
+Trident Protectのバージョンは日付ベースの `YY.MM`命名規則に従い、「YY」は年の下2桁、「MM」は月を表します。ドットリリースは `YY.MM.X`命名規則に従い、「X」はパッチレベルを表します。アップグレード元のバージョンに基づいて、アップグレード先のバージョンを選択してください。
+
+* インストールされているバージョンから4リリース以内の任意のターゲットリリースへの直接アップグレードを実行できます。たとえば、24.10（または任意の24.10ドットリリース）から25.10に直接アップグレードできます。
+* 4つのリリース期間外のリリースからアップグレードする場合は、複数ステップのアップグレードを実行してください。link:../earlier-versions.html["以前のバージョン"]からアップグレードする場合は、そのバージョンのアップグレード手順を使用して、4リリース期間に収まる最新のリリースにアップグレードします。例えば、24.10 を実行していて、26.06 にアップグレードしたい場合：
++
+.. 最初に 24.10 から 25.02 にアップグレードします。
+.. 次に、25.02から26.06にアップグレードします。
+
+
+
+
+
+
+[[step-2-upgrade-trident-protect]]
+== ステップ2：Trident Protectをアップグレードする
+
+Trident Protectをアップグレードするには、次の手順を実行します。
+
+.手順
+. Trident Helm リポジトリを更新します：
++
+[source, console]
+----
+helm repo update
+----
+. Trident Protect CRD をアップグレードする：
++
+
+NOTE: 25.06より前のバージョンからアップグレードする場合は、CRDがTrident Protect Helmチャートに含まれているため、この手順が必要です。
+
++
+.. このコマンドを実行して、CRDの管理を `trident-protect-crds`から `trident-protect`に移行します：
++
+[source, console]
+----
+kubectl get crd | grep protect.trident.netapp.io | awk '{print $1}' | xargs -I {} kubectl patch crd {} --type merge -p '{"metadata":{"annotations":{"meta.helm.sh/release-name": "trident-protect"}}}'
+----
+.. このコマンドを実行して `trident-protect-crds`チャートのHelmシークレットを削除します：
++
+
+NOTE: Helm を使用して `trident-protect-crds`チャートをアンインストールしないでください。CRD と関連データが削除される可能性があります。
+
++
+[source, console]
+----
+kubectl delete secret -n trident-protect -l name=trident-protect-crds,owner=helm
+----
+
+
+. Trident Protectのアップグレード：
++
+[source, console]
+----
+helm upgrade trident-protect netapp-trident-protect/trident-protect --version 100.2606.0 --namespace trident-protect
+----
++
+
+NOTE: アップグレード中にログレベルを設定するには、アップグレード コマンドに `--set logLevel=debug`を追加します。デフォルトのログレベルは `warn`です。デバッグログは、ログ レベルの変更や問題の再現を必要とせずにNetAppサポートが問題を診断するのに役立つため、トラブルシューティングに推奨されます。
+
+
